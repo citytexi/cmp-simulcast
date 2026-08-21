@@ -1,0 +1,27 @@
+{
+  "android-skills": {
+    "sha": "6685cac2923e3ccc7e5c385019464374699cda95",
+    "branch": "main",
+    "url": "https://github.com/android/skills.git"
+  },
+  "kotlin-agent-skills": {
+    "sha": "08d7ad0d74a9a5a548287b2bd4926180fab56cac",
+    "branch": "main",
+    "url": "https://github.com/Kotlin/kotlin-agent-skills.git"
+  },
+  "compose-performance-skills": {
+    "sha": "1b32f81724c0d71fe9ef093ca44697f559fdab6e",
+    "branch": "main",
+    "url": "https://github.com/skydoves/compose-performance-skills.git"
+  },
+  "chrisbanes-skills": {
+    "sha": "b439cb3d981b7a5d1ff236f7d40f1ccd616c5b5a",
+    "branch": "main",
+    "url": "https://github.com/chrisbanes/skills.git"
+  },
+  "android-testing-skills": {
+    "sha": "8665ed59643c90eb1056a256a6ddec161aa1cfa1",
+    "branch": "main",
+    "url": "https://github.com/skydoves/android-testing-skills.git"
+  }
+}
