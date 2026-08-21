@@ -43,10 +43,10 @@ iOS는 ScreenCaptureKit 창 캡처)으로 우회해야 하며 전체 공수의 �
 | 항목 | 선택 | 근거 |
 |---|---|---|
 | 빌드 타깃 | Kotlin Multiplatform, `jvm()` 타깃 하나 | 지금은 Desktop 하나뿐이라 KMP 레이어가 순수 비용이다. 그럼에도 KMP로 두는 것은 나중에 Windows·Linux에서 Android 쪽만 지원하거나 코어 로직을 다른 타깃에 올릴 때 플러그인·소스셋 구조를 갈아엎지 않고 타깃 한 줄만 추가하면 되기 때문이다. 지불하는 비용은 `commonMain`/`jvmMain` 계층과 expect/actual 장단이다 |
-| UI | Compose Multiplatform 1.8.2 | 1.9.0은 alpha 단계라 채택하지 않는다 |
-| Kotlin | 2.2.0 | 아래 [리스크](#리스크와-검증) 참고 — Compose MP 1.8.2와의 호환을 첫 태스크에서 검증한다 |
-| DI | Koin 4.1.0 | 모듈마다 `module { }` 정의를 두고 `app`이 모아 시작하는 구조라, feature가 늘어도 `app`의 변경이 한 줄이다. KSP가 들어오지 않아 컨벤션 플러그인과 빌드 시간이 단순해진다. 누락을 런타임에 알게 되는 것이 대가이므로 `verify()` 테스트로 상쇄한다 |
-| 상태관리 | Orbit MVI 10.0.0 | `orbit-viewmodel-desktop` 아티팩트가 있어 KMP를 정식 지원한다 |
+| UI | Compose Multiplatform 1.11.1 | 최신 안정판. 1.12.0은 rc 단계라 채택하지 않는다 |
+| Kotlin | 2.4.10 | 최신 안정판. CMP 1.11은 Kotlin 언어·API 버전 2.2 이상을 요구하며, 릴리스 노트가 말하는 "Kotlin 2.3 필요"는 native·web 타깃 한정이라 JVM 단일 타깃인 이 프로젝트에는 걸리지 않는다. 아래 [리스크](#리스크와-검증) 참고 |
+| DI | Koin 4.2.2 | 모듈마다 `module { }` 정의를 두고 `app`이 모아 시작하는 구조라, feature가 늘어도 `app`의 변경이 한 줄이다. KSP가 들어오지 않아 컨벤션 플러그인과 빌드 시간이 단순해진다. 누락을 런타임에 알게 되는 것이 대가이므로 `verify()` 테스트로 상쇄한다 |
+| 상태관리 | Orbit MVI 12.0.0 | `orbit-viewmodel-desktop`·`orbit-compose-desktop` 아티팩트가 있어 KMP를 정식 지원한다 |
 | 테스트 | `kotlin.test` + `orbit-test` + Turbine | `kotlin.test`는 멀티플랫폼 대응이라 나중에 타깃이 늘어도 그대로 간다 |
 
 ## 모듈 구조
@@ -207,17 +207,22 @@ sealed interface DeviceError {
   증명되지 않는다.
 - **`data`** — `FakeCommandRunner`로 고정 출력을 주고 파싱과 에러 변환을 검증한다. 실제 `adb`
   출력 샘플을 픽스처로 둔다.
-- **`feature`** — `orbit-test`로 상태 전이를 검증한다. 한쪽 소스 실패 시 다른 쪽이 살아 있는지가
-  핵심 케이스다.
+- **`feature`** — `orbit-test`(`org.orbit-mvi:orbit-test`)로 상태 전이를 검증한다. 한쪽 소스 실패
+  시 다른 쪽이 살아 있는지가 핵심 케이스다.
 - **DI** — 모듈마다 Koin `verify()` 테스트를 건다. 런타임 누락을 빌드 시점으로 당기는 장치라
   Koin을 고른 대가를 여기서 갚는다.
 
 ## 리스크와 검증
 
-**Compose MP 1.8.2 + Kotlin 2.2.0 호환.** Compose 컴파일러 플러그인이 Kotlin 배포에 포함되면서
-두 버전의 결합이 이전보다 강해졌다. 공식 호환 표 확인이 필요하고, 구현 계획의 첫 태스크로 빈
-모듈 하나를 실제로 컴파일해 검증한다. 맞지 않으면 Kotlin을 2.1.21로 내린다. 이 검증을 먼저 두는
-이유는 여기서 버전이 바뀌면 카탈로그와 컨벤션 플러그인이 함께 움직이기 때문이다.
+**Compose MP 1.11.1 + Kotlin 2.4.10 호환.** Compose 컴파일러 플러그인이 Kotlin 배포에 포함되면서
+두 버전의 결합이 이전보다 강해졌다. CMP 1.11이 요구하는 하한(언어·API 2.2)은 충족하지만 상한은
+릴리스 노트에 없다. 구현 계획의 첫 태스크로 빈 모듈 하나를 실제로 컴파일해 검증하고, 맞지 않으면
+Kotlin을 2.3 계열로 내린다. 이 검증을 먼저 두는 이유는 여기서 버전이 바뀌면 카탈로그와 컨벤션
+플러그인이 함께 움직이기 때문이다.
+
+**버전은 저장소 메타데이터로 확인한다.** 이 스펙의 버전은 `repo1.maven.org`의
+`maven-metadata.xml`을 직접 읽어 확정했다. `search.maven.org`의 검색 색인은 최신 릴리스를
+반영하지 않는 경우가 있어 근거로 쓰지 않는다.
 
 **`xcrun simctl list --json` 출력 스키마.** Xcode 버전에 따라 필드가 달라질 수 있다. 파싱은
 관대하게 — 모르는 필드는 무시하고, 필수 필드가 없으면 그 항목만 건너뛰고 나머지는 살린다.
