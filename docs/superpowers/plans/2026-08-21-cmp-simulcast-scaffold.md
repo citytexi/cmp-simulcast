@@ -3113,6 +3113,23 @@ git commit -m "docs: accept the scaffold ADRs now that the code exists"
 
 ---
 
+## PR 분할
+
+PR 4개로 나누고 `develop`에 순차 머지한다. 각 PR은 직전 PR이 머지된 뒤의 `develop`에서 분기한다 — 스택 PR로 쌓지 않는다.
+
+| PR | 태스크 | 브랜치 | 머지 시점의 상태 |
+|---|---|---|---|
+| 1 | 1~3 | `citytexi/scaffold-build-foundation` | ADR 4건 + 빌드 기반. `./gradlew run`으로 창이 뜬다. 버전 조합 스파이크가 여기서 판가름 난다 |
+| 2 | 4~10 | `citytexi/scaffold-core-process` | `core:process` 완성. 앱 동작은 그대로이고 테스트만 는다 |
+| 3 | 11~17 | `citytexi/scaffold-domain-data` | `Outcome`·domain·data. 소비자가 0이라 화면 변화가 없다 |
+| 4 | 18~21 | `citytexi/scaffold-devices-screen` | feature + app 조립. 화면이 실제로 디바이스를 보여준다 |
+
+**진행 규율**
+
+- 실행은 `superpowers:subagent-driven-development`로 한다. Orca 터미널이므로 `orca-plan-ledger`를 함께 로드해 워크스페이스 카드에 진행을 찍는다.
+- 커밋은 태스크마다. push·PR 생성·머지는 **각 단계마다 사용자 확인을 받는다.**
+- PR 1의 버전 스파이크(Task 3 Step 6·7)가 실패하면 PR을 올리지 않고 멈춰 보고한다. 그 결과에 따라 카탈로그와 컨벤션 플러그인이 함께 바뀌므로 뒤 PR의 전제가 무너진다.
+
 ## 자체 검토 결과
 
 **스펙 커버리지.** 모듈 7개(Task 2·3·4·12·13·18), 컨벤션 플러그인 6개(Task 2·3·13·18), 카탈로그(Task 2), `CommandRunner` 계약 다섯 성질(Task 4~10), 실행 파일 탐색(Task 13), 수직 슬라이스(Task 14~20), ADR 4건(Task 1·21), 버전 조합 스파이크(Task 3), dmg 실행 환경 검증(Task 20 Step 8) — 스펙의 각 절이 태스크로 대응된다.
