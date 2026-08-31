@@ -41,6 +41,8 @@ class ProcessCommandRunner(
     }
 
     override fun stream(command: Command, capacity: Int): Flow<CommandEvent> = callbackFlow {
+        val sink = DropCountingSink { trySend(it).isSuccess }
+
         val process = try {
             command.toProcessBuilder().start()
         } catch (e: IOException) {
@@ -51,10 +53,10 @@ class ProcessCommandRunner(
 
         val readers = listOf(
             launch(io) {
-                process.inputStream.bufferedReader().forEachLine { trySend(CommandEvent.Stdout(it)) }
+                process.inputStream.bufferedReader().forEachLine { sink.offer(CommandEvent.Stdout(it)) }
             },
             launch(io) {
-                process.errorStream.bufferedReader().forEachLine { trySend(CommandEvent.Stderr(it)) }
+                process.errorStream.bufferedReader().forEachLine { sink.offer(CommandEvent.Stderr(it)) }
             },
         )
 
