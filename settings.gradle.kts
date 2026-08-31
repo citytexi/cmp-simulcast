@@ -26,3 +26,4 @@ rootProject.name = "cmp-simulcast"
 include(":app")
 include(":core:common")
 include(":core:designsystem")
+include(":core:process")
