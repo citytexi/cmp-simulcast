@@ -1074,7 +1074,9 @@ internal fun Process.reapTree(graceMillis: Long = 500) {
     if (!waitFor(graceMillis, TimeUnit.MILLISECONDS)) {
         descendants.asReversed().forEach { it.destroyForcibly() }
         destroyForcibly()
-        waitFor()
+        // SIGKILL 조차 통하지 않는 상태(D-state, 예: 끊긴 네트워크 마운트나 장치 I/O에 걸린 경우)가
+        // 있을 수 있다. 이 대기가 무한정이면 회수 자체가 상위 타임아웃과 같은 방식으로 매달린다.
+        waitFor(graceMillis, TimeUnit.MILLISECONDS)
     }
     descendants.forEach { it.destroyForcibly() }
 }
@@ -1119,6 +1121,14 @@ Expected: PASS (3개 테스트 전부)
 git add core/process
 git commit -m "feat(process): time out via waitFor and reap the process tree"
 ```
+
+**사후 기록 (PR2 최종 리뷰 픽스 웨이브, `test(process): pin that a cancelled run reaps its child`):**
+`run`의 취소 대응을 고치면서 `try`/`finally`가 `coroutineScope` *안*, `waitFor` 주변에 있어야
+한다는 게 드러났다 — 바깥으로 빼면(자연스러워 보이는 리팩터링) `coroutineScope`가 자식(stdout/
+stderr 리더)의 join을 기다리는데 그 자식을 풀어줄 회수가 아직 안 도는 데드락이 재현된다.
+이 배치를 고정하는 `cancelling_run_reaps_the_child_instead_of_waiting_out_the_timeout`을
+`ProcessCommandRunnerRunTest`에 추가했다. 자세한 경위는
+`.superpowers/sdd/2026-08-21-cmp-simulcast-scaffold/pr2-final-fix-report.md` 참고.
 
 ---
 
@@ -1269,7 +1279,7 @@ Expected: FAIL — `stream`이 빈 flow라 이벤트가 0개다.
         launch(io) {
             val exitCode = process.waitFor()
             readers.joinAll()
-            trySend(CommandEvent.Exited(exitCode))
+            send(CommandEvent.Exited(exitCode))
             close()
         }
 
@@ -1380,9 +1390,14 @@ git commit -m "test(process): pin descendant reaping on stream cancellation"
 `callbackFlow`의 채널이 차면 `trySend`가 실패하고 그 줄은 경고 없이 사라진다. logcat은 초당 수천 줄을 뿜고 로그 뷰어가 이 앱의 핵심 가치이므로, 버린 줄 수를 `Dropped`로 알린다. 드롭 계산은 순수 클래스로 떼어 결정적으로 테스트한다 — 실제 프로세스로 오버플로를 재현하면 타이밍에 기대는 불안정한 테스트가 된다.
 
 **Files:**
-- Create: `core/process/src/commonMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`
+- Create: `core/process/src/jvmMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`
 - Modify: `core/process/src/jvmMain/kotlin/dev/citytexi/simulcast/process/ProcessCommandRunner.kt`
-- Test: `core/process/src/commonTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`
+- Test: `core/process/src/jvmTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`
+
+`DropCountingSink`는 `internal`이고 유일한 소비자인 `ProcessCommandRunner`가 이미 `jvmMain`에
+있으므로 `commonMain`이 아니라 `jvmMain`에 둔다 — 공개 계약만 `commonMain`에 두는 모듈 경계와
+일치하고, `offer`가 두 리더 코루틴에서 동시에 불려 카운터를 원자적으로 다뤄야 하는데
+`java.util.concurrent.atomic`은 JVM 전용이라 그 표현이 `jvmMain`에서만 자연스럽다.
 
 **Interfaces:**
 - Consumes: Task 8의 `stream`
@@ -1390,7 +1405,7 @@ git commit -m "test(process): pin descendant reaping on stream cancellation"
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
-`core/process/src/commonTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`:
+`core/process/src/jvmTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`:
 
 ```kotlin
 package dev.citytexi.simulcast.process
@@ -1427,7 +1442,27 @@ class DropCountingSinkTest {
 
         sink.offer(CommandEvent.Stdout("a"))
 
-        assertEquals(listOf(CommandEvent.Stdout("a")), accepted)
+        assertEquals(listOf<CommandEvent>(CommandEvent.Stdout("a")), accepted)
+    }
+
+    @Test
+    fun keeps_the_count_when_the_dropped_report_itself_fails() {
+        val accepted = mutableListOf<CommandEvent>()
+        val results = ArrayDeque(listOf(false, false, false, true, true))
+        val sink = DropCountingSink { event ->
+            val ok = results.removeFirst()
+            if (ok) accepted += event
+            ok
+        }
+
+        sink.offer(CommandEvent.Stdout("a"))
+        sink.offer(CommandEvent.Stdout("b"))
+        sink.offer(CommandEvent.Stdout("c"))
+
+        assertEquals(
+            listOf(CommandEvent.Dropped(2), CommandEvent.Stdout("c")),
+            accepted,
+        )
     }
 }
 ```
@@ -1442,24 +1477,28 @@ Expected: FAIL — `Unresolved reference: DropCountingSink`
 
 - [ ] **Step 3: 구현 작성**
 
-`core/process/src/commonMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`:
+`core/process/src/jvmMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`:
 
 ```kotlin
 package dev.citytexi.simulcast.process
+
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * @param send 채널이 받아들였으면 true. 실패한 이벤트는 버려진 것으로 센다.
  */
 internal class DropCountingSink(private val send: (CommandEvent) -> Boolean) {
 
-    private var dropped = 0
+    // stdout/stderr 두 리더 코루틴이 서로 다른 스레드에서 동시에 offer를 호출한다.
+    private val dropped = AtomicInteger(0)
 
     fun offer(event: CommandEvent) {
-        if (dropped > 0 && send(CommandEvent.Dropped(dropped))) {
-            dropped = 0
+        val pending = dropped.getAndSet(0)
+        if (pending > 0 && !send(CommandEvent.Dropped(pending))) {
+            dropped.addAndGet(pending)
         }
         if (!send(event)) {
-            dropped++
+            dropped.incrementAndGet()
         }
     }
 }
@@ -1481,7 +1520,8 @@ Expected: PASS
         val sink = DropCountingSink { trySend(it).isSuccess }
 ```
 
-그리고 세 곳의 `trySend(...)`를 각각 `sink.offer(...)`로 교체한다:
+그리고 두 곳의 `trySend(...)`(줄 리더)를 각각 `sink.offer(...)`로 교체한다. `Exited`는
+드롭 대상이 아니므로 sink를 거치지 않고 지금처럼 `send`로 직접 보낸다:
 
 ```kotlin
         val readers = listOf(
@@ -1496,7 +1536,7 @@ Expected: PASS
         launch(io) {
             val exitCode = process.waitFor()
             readers.joinAll()
-            sink.offer(CommandEvent.Exited(exitCode))
+            send(CommandEvent.Exited(exitCode))
             close()
         }
 ```
