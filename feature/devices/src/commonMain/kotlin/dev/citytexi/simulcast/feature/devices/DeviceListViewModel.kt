@@ -12,6 +12,7 @@ class DeviceListViewModel(
     override val container = orbitContainer<DeviceListState, Nothing>(DeviceListState())
 
     fun refresh() = intent {
+        if (state.loading) return@intent
         reduce { state.copy(loading = true) }
         val listing = getDevices()
         reduce { state.copy(loading = false, android = listing.android, ios = listing.ios) }

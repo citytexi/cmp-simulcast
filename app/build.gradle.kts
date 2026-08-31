@@ -16,9 +16,5 @@ kotlin {
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
         }
-
-        jvmTest.dependencies {
-            implementation(kotlin("test"))
-        }
     }
 }

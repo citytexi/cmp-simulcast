@@ -8,7 +8,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             implementation(project(":core:designsystem"))
-            implementation(libs.lib("orbit-core"))
+            api(libs.lib("orbit-core"))
             implementation(libs.lib("orbit-viewmodel"))
             implementation(libs.lib("orbit-compose"))
             implementation(libs.lib("koin-compose"))

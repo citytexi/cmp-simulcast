@@ -28,7 +28,7 @@ fun DeviceListScreen(viewModel: DeviceListViewModel = koinViewModel()) {
     LaunchedEffect(Unit) { viewModel.refresh() }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Button(onClick = viewModel::refresh) { Text("새로고침") }
+        Button(onClick = viewModel::refresh, enabled = !state.loading) { Text("새로고침") }
         if (state.loading) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
@@ -55,7 +55,7 @@ private fun DeviceColumn(
                     Text("없음")
                 } else {
                     LazyColumn {
-                        items(outcome.value) { device ->
+                        items(outcome.value, key = { it.id }) { device ->
                             Text("${device.name} · ${device.state}")
                         }
                     }

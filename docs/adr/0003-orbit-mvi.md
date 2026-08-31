@@ -21,8 +21,8 @@ tags: [adr, state]
 
 ## 결정
 
-Orbit MVI를 쓴다. 상태 홀더는 `ContainerHost<S, E>`를 구현하고 `container { }`로 초기 상태를
-선언하며, 상태 전이는 `intent { reduce { } }`로만 일어난다. 테스트는 `orbit-test`로 한다.
+Orbit MVI를 쓴다. 상태 홀더는 `OrbitContainerHost<S, S, E>`를 구현하고 `orbitContainer(초기값)`으로
+초기 상태를 선언하며, 상태 전이는 `intent { reduce { } }`로만 일어난다. 테스트는 `orbit-test`로 한다.
 
 `orbit-viewmodel-desktop`·`orbit-compose-desktop` 아티팩트가 있어 데스크톱 타깃을 정식 지원한다.
 
