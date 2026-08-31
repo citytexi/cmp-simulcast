@@ -305,7 +305,7 @@ adb·emulator·xcrun 호출이 전부 "프로세스를 띄우고 줄 단위로 �
 | [0001](0001-kmp-single-jvm-target.md) | KMP multiplatform 플러그인 + jvm() 타깃 하나 | proposed | 2026-08-21 | `kotlin("jvm")` 기각 |
 | [0002](0002-koin-di.md) | DI로 Koin 채택 | proposed | 2026-08-21 | `verify()`는 테스트 시점·생성자 주입 한정 |
 | [0003](0003-orbit-mvi.md) | 상태관리로 Orbit MVI 채택 | proposed | 2026-08-21 | 로그 화면 성능은 후속 재검토 |
-| [0004](0004-core-process-failures-as-values.md) | core:process 분리 + 실패를 값으로 | proposed | 2026-08-21 | 타임아웃을 값으로 둬야 취소 규칙과 충돌이 없다 |
+| [0004](0004-core-process-failures-as-values.md) | core:process를 data에서 분리하고 모든 실패를 값으로 표현 | proposed | 2026-08-21 | 타임아웃을 값으로 둬야 취소 규칙과 충돌이 없다 |
 ```
 
 - [ ] **Step 6: 커밋**
