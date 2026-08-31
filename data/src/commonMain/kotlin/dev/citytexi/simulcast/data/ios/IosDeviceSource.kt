@@ -8,6 +8,7 @@ import dev.citytexi.simulcast.process.Command
 import dev.citytexi.simulcast.process.CommandResult
 import dev.citytexi.simulcast.process.CommandRunner
 import kotlinx.serialization.SerializationException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 
 class IosDeviceSource(
@@ -28,6 +29,10 @@ class IosDeviceSource(
                         Outcome.Ok(parseSimctlDevices(result.stdout))
                     } catch (e: SerializationException) {
                         Outcome.Err(DeviceError.ParseFailed("simctl", e.message ?: ""))
+                    } catch (e: CancellationException) {
+                        // JVM 상의 CancellationException은 IllegalStateException의 서브클래스라
+                        // 아래 catch가 이 가드 없이는 취소를 삼켜버린다.
+                        throw e
                     } catch (e: IllegalStateException) {
                         Outcome.Err(DeviceError.ParseFailed("simctl", e.message ?: ""))
                     }
