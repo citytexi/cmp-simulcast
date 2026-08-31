@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 
 class ProcessCommandRunner(
@@ -24,8 +25,13 @@ class ProcessCommandRunner(
         coroutineScope {
             val stdout = async { process.inputStream.bufferedReader().readText() }
             val stderr = async { process.errorStream.bufferedReader().readText() }
-            val exitCode = process.waitFor()
-            CommandResult.Completed(exitCode, stdout.await(), stderr.await())
+
+            val exited = process.waitFor(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+            if (!exited) {
+                process.reapTree()
+                return@coroutineScope CommandResult.TimedOut(stdout.await(), stderr.await())
+            }
+            CommandResult.Completed(process.exitValue(), stdout.await(), stderr.await())
         }
     }
 

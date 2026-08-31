@@ -4,6 +4,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class ProcessCommandRunnerRunTest {
@@ -24,5 +26,15 @@ class ProcessCommandRunnerRunTest {
         val result = runner.run(Command("/nonexistent/tool"), 5.seconds)
 
         assertIs<CommandResult.StartFailed>(result)
+    }
+
+    @Test
+    fun times_out_and_kills_the_process() = runTest {
+        val started = System.currentTimeMillis()
+        val result = runner.run(Command("/bin/sleep", listOf("30")), 300.milliseconds)
+        val elapsed = System.currentTimeMillis() - started
+
+        assertIs<CommandResult.TimedOut>(result)
+        assertTrue(elapsed < 10_000, "타임아웃이 걸리지 않고 매달렸다: ${elapsed}ms")
     }
 }
