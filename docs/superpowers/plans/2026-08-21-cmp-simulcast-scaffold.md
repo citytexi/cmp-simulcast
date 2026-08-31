@@ -1271,7 +1271,7 @@ Expected: FAIL — `stream`이 빈 flow라 이벤트가 0개다.
         launch(io) {
             val exitCode = process.waitFor()
             readers.joinAll()
-            trySend(CommandEvent.Exited(exitCode))
+            send(CommandEvent.Exited(exitCode))
             close()
         }
 
@@ -1483,7 +1483,8 @@ Expected: PASS
         val sink = DropCountingSink { trySend(it).isSuccess }
 ```
 
-그리고 세 곳의 `trySend(...)`를 각각 `sink.offer(...)`로 교체한다:
+그리고 두 곳의 `trySend(...)`(줄 리더)를 각각 `sink.offer(...)`로 교체한다. `Exited`는
+드롭 대상이 아니므로 sink를 거치지 않고 지금처럼 `send`로 직접 보낸다:
 
 ```kotlin
         val readers = listOf(
@@ -1498,7 +1499,7 @@ Expected: PASS
         launch(io) {
             val exitCode = process.waitFor()
             readers.joinAll()
-            sink.offer(CommandEvent.Exited(exitCode))
+            send(CommandEvent.Exited(exitCode))
             close()
         }
 ```

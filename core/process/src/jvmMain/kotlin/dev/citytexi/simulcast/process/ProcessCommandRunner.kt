@@ -61,7 +61,7 @@ class ProcessCommandRunner(
         launch(io) {
             val exitCode = process.waitFor()
             readers.joinAll()
-            trySend(CommandEvent.Exited(exitCode))
+            send(CommandEvent.Exited(exitCode))
             close()
         }
 
