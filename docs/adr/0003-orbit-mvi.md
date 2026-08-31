@@ -1,7 +1,7 @@
 ---
 id: ADR-0003
 title: 상태관리로 Orbit MVI 채택
-status: proposed
+status: accepted
 date: 2026-08-21
 deciders: cmp-simulcast 팀
 supersedes:

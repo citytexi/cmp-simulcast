@@ -1,7 +1,7 @@
 ---
 id: ADR-0004
 title: core:process를 data에서 분리하고 모든 실패를 값으로 표현
-status: proposed
+status: accepted
 date: 2026-08-21
 deciders: cmp-simulcast 팀
 supersedes:
