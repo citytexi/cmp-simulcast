@@ -7,3 +7,11 @@
 # 파이썬
 __pycache__/
 *.pyc
+
+# Gradle
+.gradle/
+build/
+local.properties
+.kotlin/
+.idea/
+*.iml
