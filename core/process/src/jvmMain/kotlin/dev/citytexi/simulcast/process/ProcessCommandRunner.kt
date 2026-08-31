@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import kotlin.time.Duration
 
 class ProcessCommandRunner(
@@ -15,7 +16,11 @@ class ProcessCommandRunner(
 ) : CommandRunner {
 
     override suspend fun run(command: Command, timeout: Duration): CommandResult = withContext(io) {
-        val process = command.toProcessBuilder().start()
+        val process = try {
+            command.toProcessBuilder().start()
+        } catch (e: IOException) {
+            return@withContext CommandResult.StartFailed(e.message ?: e.toString())
+        }
         coroutineScope {
             val stdout = async { process.inputStream.bufferedReader().readText() }
             val stderr = async { process.errorStream.bufferedReader().readText() }

@@ -18,4 +18,11 @@ class ProcessCommandRunnerRunTest {
         assertEquals(0, completed.exitCode)
         assertEquals("hello", completed.stdout.trim())
     }
+
+    @Test
+    fun reports_start_failure_without_throwing() = runTest {
+        val result = runner.run(Command("/nonexistent/tool"), 5.seconds)
+
+        assertIs<CommandResult.StartFailed>(result)
+    }
 }
