@@ -11,7 +11,7 @@ internal class DropCountingSink(private val send: (CommandEvent) -> Boolean) {
     private val dropped = AtomicInteger(0)
 
     fun offer(event: CommandEvent) {
-        val pending = dropped.getAndSet(0)
+        val pending = pendingCount()
         if (pending > 0 && !send(CommandEvent.Dropped(pending))) {
             dropped.addAndGet(pending)
         }
@@ -19,4 +19,7 @@ internal class DropCountingSink(private val send: (CommandEvent) -> Boolean) {
             dropped.incrementAndGet()
         }
     }
+
+    /** 누적된 드롭 수를 원자적으로 비우면서 돌려준다. `offer`의 클레임과 같은 연산이다. */
+    internal fun pendingCount(): Int = dropped.getAndSet(0)
 }

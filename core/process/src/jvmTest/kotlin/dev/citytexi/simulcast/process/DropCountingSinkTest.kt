@@ -54,4 +54,15 @@ class DropCountingSinkTest {
             accepted,
         )
     }
+
+    @Test
+    fun pending_count_claims_the_accumulated_drops_and_resets_to_zero() {
+        val sink = DropCountingSink { false }
+
+        sink.offer(CommandEvent.Stdout("a"))
+        sink.offer(CommandEvent.Stdout("b"))
+
+        assertEquals(2, sink.pendingCount())
+        assertEquals(0, sink.pendingCount())
+    }
 }

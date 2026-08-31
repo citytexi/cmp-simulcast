@@ -169,18 +169,22 @@ interface CommandRunner {
 **stdout과 stderr를 동시에 드레인한다.** 둘은 별개 파이프이고 OS 버퍼가 차면 자식이 write에서
 영구 블록된다. stdout만 읽는 구현은 자식이 stderr에 수십 KB를 쓰는 순간 데드락에 빠져
 타임아웃까지 매달린다. `adb`는 daemon 기동 메시지를, `xcrun`은 실패 메시지를 stderr로 뱉으므로
-이 앱이 다루는 바로 그 두 도구가 이 함정을 밟는다. 각각 별도 코루틴으로 읽고 둘 다 끝난 뒤
-`waitFor`한다. `redirectErrorStream(true)`는 stderr를 따로 담아야 하는 계약과 양립하지 않는다.
+이 앱이 다루는 바로 그 두 도구가 이 함정을 밟는다. 각각 별도 코루틴으로 읽고, `waitFor`는 그
+두 리더와 동시에 돈다 — 리더가 끝나길 기다린 뒤에 `waitFor`를 시작하면 타임아웃 자체가
+성립하지 않는다. `redirectErrorStream(true)`는 stderr를 따로 담아야 하는 계약과 양립하지 않는다.
 
 **손자 프로세스까지 회수한다.** `Process.destroy()`는 직계 자식에게만 신호를 보낸다.
 `adb shell ...`이나 `xcrun simctl spawn <udid> log stream`은 손자를 만들므로, 직계만 죽이면
 막으려던 누수가 그대로 남는다. `ProcessHandle.descendants()`를 역순으로 destroy한 뒤 루트를
-죽인다. `awaitClose`는 이미 취소된 스코프에서 실행되므로 유예 대기는 `withContext(NonCancellable)`
-안에서 한다.
+죽인다. 회수 자체는 일반 블로킹 함수라, `awaitClose`가 이미 취소된 스코프에서 실행되더라도
+별도 처리 없이 그 안에서 그대로 돈다.
 
 **스트림 유실이 조용하지 않다.** `callbackFlow`의 기본 채널 용량은 RENDEZVOUS라 수집이 한 프레임
 밀리면 그 줄이 경고 없이 버려진다. logcat은 초당 수천 줄을 뿜고 로그 뷰어가 이 앱의 핵심
-가치이므로, 용량을 명시하고 `DROP_OLDEST`로 넘치게 하되 버린 줄 수를 `Dropped` 이벤트로 알린다.
+가치이므로, 용량을 명시하고 `SUSPEND`로 넘치면 리더가 잠깐 멎게 한다. `DROP_OLDEST`는 쓸 수
+없다 — 채널이 알아서 버리면 `trySend`가 항상 성공한 것처럼 보여 몇 줄이 버려졌는지 셀 방법이
+없다. 대신 리더는 카운팅 싱크를 거쳐 채널에 보낸다: 채널이 못 받으면 드롭을 세고, 다음에
+받아들일 때 그 개수를 `Dropped` 이벤트로 먼저 흘려보낸 뒤 원래 이벤트를 보낸다.
 
 그 밖에 **셸을 거치지 않는다.** `Command`는 실행 파일과 인자를 분리해 들고
 `ProcessBuilder(executable, *args)`로 직접 실행한다. 문자열 하나로 합쳐 `sh -c`에 넘기면 디바이스

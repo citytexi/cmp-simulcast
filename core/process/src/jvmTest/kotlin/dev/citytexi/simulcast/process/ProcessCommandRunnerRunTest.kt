@@ -37,4 +37,15 @@ class ProcessCommandRunnerRunTest {
         assertIs<CommandResult.TimedOut>(result)
         assertTrue(elapsed < 10_000, "타임아웃이 걸리지 않고 매달렸다: ${elapsed}ms")
     }
+
+    @Test
+    fun passes_env_to_the_child_process() = runTest {
+        val result = runner.run(
+            Command("/bin/sh", listOf("-c", "echo \$FOO"), env = mapOf("FOO" to "bar")),
+            5.seconds,
+        )
+
+        val completed = assertIs<CommandResult.Completed>(result)
+        assertEquals("bar", completed.stdout.trim())
+    }
 }

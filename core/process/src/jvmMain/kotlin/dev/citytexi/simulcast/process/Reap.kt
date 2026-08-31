@@ -6,6 +6,10 @@ import java.util.concurrent.TimeUnit
  * `destroy()` 는 직계 자식에게만 신호를 보낸다. `sh -c 'x & wait'` 류가 만드는 손자는
  * 그대로 남으므로 자손 목록을 먼저 붙잡아 역순으로 죽인다 — 루트를 먼저 죽이면 자손이
  * 재부모화되어 목록에서 사라진다.
+ *
+ * 유예 기간은 루트에만 있다. 자손은 SIGTERM 뒤 유예 없이 바로 강제 종료로 넘어간다.
+ * `adb shell` 형태엔 문제없지만, `emulator`처럼 자손이 스스로 정리할 시간이 필요한
+ * 프로세스를 이 방식으로 회수하기 전엔 유의해야 한다.
  */
 internal fun Process.reapTree(graceMillis: Long = 500) {
     val descendants = descendants().toList()

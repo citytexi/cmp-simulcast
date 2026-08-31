@@ -5,6 +5,11 @@ import kotlin.time.Duration
 
 sealed interface CommandResult {
     data class Completed(val exitCode: Int, val stdout: String, val stderr: String) : CommandResult
+
+    /**
+     * 부분 출력은 자식 파이프가 EOF에 닿아야 채워진다. 스냅샷 시점 이전에 데몬화해 자손 목록을
+     * 벗어난 프로세스가 그 파이프를 물려받고 있었다면, 회수 후에도 출력 수집이 계속 블록될 수 있다.
+     */
     data class TimedOut(val partialStdout: String, val partialStderr: String) : CommandResult
     data class StartFailed(val reason: String) : CommandResult
 }
