@@ -101,6 +101,20 @@ class AndroidDeviceSourceTest {
     }
 
     @Test
+    fun ignores_list_avds_output_when_emulator_exits_nonzero() = runTest {
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("-list-avds") to CommandResult.Completed(1, "Pixel_7\n", "emulator: error"),
+                listOf("devices", "-l") to CommandResult.Completed(0, "List of devices attached\n", ""),
+            ),
+        )
+
+        val result = AndroidDeviceSource(runner, locator).list()
+
+        assertEquals(Outcome.Ok(emptyList()), result)
+    }
+
+    @Test
     fun leaves_an_avd_listed_as_stopped_when_its_running_name_cannot_be_resolved() = runTest {
         val runner = FakeCommandRunner(
             mapOf(

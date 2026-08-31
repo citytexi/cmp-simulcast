@@ -2268,6 +2268,20 @@ class AndroidDeviceSourceTest {
     }
 
     @Test
+    fun ignores_list_avds_output_when_emulator_exits_nonzero() = runTest {
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("-list-avds") to CommandResult.Completed(1, "Pixel_7\n", "emulator: error"),
+                listOf("devices", "-l") to CommandResult.Completed(0, "List of devices attached\n", ""),
+            ),
+        )
+
+        val result = AndroidDeviceSource(runner, locator).list()
+
+        assertEquals(Outcome.Ok(emptyList()), result)
+    }
+
+    @Test
     fun leaves_an_avd_listed_as_stopped_when_its_running_name_cannot_be_resolved() = runTest {
         val runner = FakeCommandRunner(
             mapOf(
@@ -2297,10 +2311,11 @@ class AndroidDeviceSourceTest {
 }
 ```
 
-네 번째 테스트는 알려진 잔여 한계를 고정한다: `emu avd name` 조회가 실패하면 그 에뮬레이터는 serial
-이름으로 `RUNNING` 표시되고, 진짜 AVD 이름은 어느 실행 중 기기와도 매칭되지 않아 `STOPPED`로도
-나타난다 — 같은 AVD가 두 행으로 보일 수 있다는 뜻이다. 이는 정보 부족에서 오는 한계이지 추정으로
-메울 대상이 아니다(구현의 `list()` KDoc 참고).
+`emulator -list-avds`가 0이 아닌 코드로 끝나면 표준출력에 뭐가 찍혀 있어도 AVD 목록은 빈 것으로
+취급한다 — `emulator`를 못 찾은 경우와 같은 취급이다. 네 번째 테스트는 알려진 잔여 한계를 고정한다:
+`emu avd name` 조회가 실패하면 그 에뮬레이터는 serial 이름으로 `RUNNING` 표시되고, 진짜 AVD 이름은
+어느 실행 중 기기와도 매칭되지 않아 `STOPPED`로도 나타난다 — 같은 AVD가 두 행으로 보일 수 있다는
+뜻이다. 이는 정보 부족에서 오는 한계이지 추정으로 메울 대상이 아니다(구현의 `list()` KDoc 참고).
 
 - [ ] **Step 3: 테스트 실패 확인**
 
@@ -2344,6 +2359,7 @@ class AndroidDeviceSource(
         val avdNames = locator.emulator()
             ?.let { emulator -> runner.run(Command(emulator, listOf("-list-avds")), TIMEOUT) }
             ?.let { it as? CommandResult.Completed }
+            ?.takeIf { it.exitCode == 0 }
             ?.stdout
             ?.lineSequence()
             ?.map(String::trim)
@@ -2549,6 +2565,20 @@ class IosDeviceSourceTest {
     }
 
     @Test
+    fun reports_parse_failure_when_devices_is_not_an_object() = runTest {
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("simctl", "list", "devices", "--json") to
+                    CommandResult.Completed(0, """{"devices": []}""", ""),
+            ),
+        )
+
+        val result = IosDeviceSource(runner, locator).list()
+
+        assertIs<Outcome.Err<DeviceError.ParseFailed>>(result)
+    }
+
+    @Test
     fun reports_tool_not_found_when_xcrun_is_missing() = runTest {
         val emptyLocator = ToolLocator(env = emptyMap(), homeDir = "/h", exists = { false })
 
@@ -2558,6 +2588,10 @@ class IosDeviceSourceTest {
     }
 }
 ```
+
+`{"devices": []}`은 `"devices"`가 실제 simctl 출력처럼 객체가 아니라 배열인 경우다. 트리 탐색을
+안전 캐스트로 하므로 이 입력은 예외를 던지지 않고 `Err(ParseFailed)`로 떨어져야 한다 — 아래 Step 3의
+근거.
 
 - [ ] **Step 2: 테스트 실패 확인**
 
@@ -2577,6 +2611,12 @@ Expected: FAIL — `Unresolved reference: IosDeviceSource`
 예외로 번진다. 그래서 JSON 트리로 파싱한 뒤 `devices` 객체를 꺼내고, 런타임 키를 거른 다음,
 남은 배열의 각 원소를 개별적으로 `SimctlDevice`로 디코드해 실패한 원소만 건너뛴다.
 
+트리 탐색은 `jsonObject`/`jsonArray` 접근자 대신 안전 캐스트(`as? JsonObject`, `as? JsonArray`)를
+쓴다. kotlinx-serialization-json 1.11.0의 그 접근자들은 타입이 안 맞으면 `IllegalArgumentException`을
+던지는데(`JsonElement.kt`의 private `error(...)` 헬퍼), 아래 `IosDeviceSource`는
+`IllegalStateException`만 잡는다. 안전 캐스트로 바꾸면 실패는 오직 이 파일이 직접 던지는
+`error(...)`(=`IllegalStateException`)뿐이라 그 catch로 충분해진다.
+
 ```kotlin
 package dev.citytexi.simulcast.data.ios
 
@@ -2586,10 +2626,10 @@ import dev.citytexi.simulcast.domain.DeviceState
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 
 @Serializable
 private data class SimctlDevice(
@@ -2604,15 +2644,19 @@ private val json = Json { ignoreUnknownKeys = true }
 /**
  * 런타임 키가 iOS 인 것, 그리고 실제로 띄울 수 있는 것만 남긴다.
  * 항목 단위로 디코드해서, 스키마에 안 맞는 한 줄이 나머지 줄까지 끌고 내려가지 않게 한다.
+ * 트리 탐색은 `jsonObject`/`jsonArray` 접근자 대신 안전 캐스트를 쓴다 — 그 접근자들은 타입이
+ * 안 맞으면 `IllegalArgumentException`을 던지는데, 호출부는 `IllegalStateException`만 잡는다.
  */
 fun parseSimctlDevices(raw: String): List<Device> {
-    val devices = json.parseToJsonElement(raw).jsonObject["devices"]?.jsonObject
+    val root = json.parseToJsonElement(raw) as? JsonObject
+        ?: error("simctl output is not a JSON object")
+    val devices = root["devices"] as? JsonObject
         ?: error("simctl output has no \"devices\" object")
 
     return devices
         .filterKeys { it.contains("SimRuntime.iOS") }
         .values
-        .flatMap { it.jsonArray }
+        .flatMap { (it as? JsonArray).orEmpty() }
         .mapNotNull(::decodeDeviceOrNull)
         .filter { it.isAvailable }
         .map { Device(it.udid, it.name, DevicePlatform.IOS, it.state.toDeviceState()) }
@@ -2638,9 +2682,11 @@ private fun String.toDeviceState(): DeviceState = when (this) {
 `data/src/commonMain/kotlin/dev/citytexi/simulcast/data/ios/IosDeviceSource.kt`:
 
 `runCatching`은 `Throwable`을 넓게 잡아 `CancellationException`까지 삼킨다. 이 프로젝트는
-취소를 다시 던지는 규칙이라, 파서가 실제로 던질 수 있는 타입만 짚어서 잡는다 — JSON 파싱·
-트리 탐색·개별 원소 디코드 실패는 `SerializationException`, 문서 구조가 기대와 달라
-`error(...)`로 떨어지는 경우는 `IllegalStateException`.
+취소를 다시 던지는 규칙이라, 파서가 실제로 던질 수 있는 타입만 짚어서 잡는다 — 개별 원소
+디코드 실패는 `SerializationException`, 문서 구조가 기대와 달라 `error(...)`로 떨어지는 경우는
+`IllegalStateException`. 트리 탐색이 안전 캐스트로 되어 있어서(위 `SimctlJson.kt` 참고) 이
+둘 밖의 타입은 던져지지 않는다 — `jsonObject`/`jsonArray` 접근자를 그대로 썼다면 타입 불일치가
+`IllegalArgumentException`으로 새어나갔을 것이고, 이 catch 블록은 그것을 잡지 못한다.
 
 ```kotlin
 package dev.citytexi.simulcast.data.ios
@@ -2729,7 +2775,10 @@ import dev.citytexi.simulcast.common.Outcome
 import dev.citytexi.simulcast.data.android.AndroidDeviceSource
 import dev.citytexi.simulcast.data.ios.IosDeviceSource
 import dev.citytexi.simulcast.data.tool.ToolLocator
+import dev.citytexi.simulcast.domain.Device
 import dev.citytexi.simulcast.domain.DeviceError
+import dev.citytexi.simulcast.domain.DevicePlatform
+import dev.citytexi.simulcast.domain.DeviceState
 import dev.citytexi.simulcast.process.CommandResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -2762,8 +2811,43 @@ class DeviceRepositoryImplTest {
         assertEquals(1, (android.value as List<*>).size)
         assertEquals(Outcome.Err(DeviceError.ToolNotFound("xcrun")), listing.ios)
     }
+
+    @Test
+    fun a_missing_adb_does_not_hide_ios_devices() = runTest {
+        val noAdb = ToolLocator(env = emptyMap(), homeDir = "/h", exists = { false })
+        val iosLocator = ToolLocator(env = emptyMap(), homeDir = "/h", exists = { it == "/usr/bin/xcrun" })
+        val simctlJson = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-18-2": [
+                  { "udid": "AAA", "name": "iPhone 16", "state": "Booted", "isAvailable": true }
+                ]
+              }
+            }
+        """.trimIndent()
+        val runner = FakeCommandRunner(
+            mapOf(listOf("simctl", "list", "devices", "--json") to CommandResult.Completed(0, simctlJson, "")),
+        )
+
+        val listing = DeviceRepositoryImpl(
+            android = AndroidDeviceSource(runner, noAdb),
+            ios = IosDeviceSource(runner, iosLocator),
+        ).listDevices()
+
+        assertEquals(Outcome.Err(DeviceError.ToolNotFound("adb")), listing.android)
+        assertEquals(
+            Outcome.Ok(listOf(Device("AAA", "iPhone 16", DevicePlatform.IOS, DeviceState.RUNNING))),
+            listing.ios,
+        )
+    }
 }
 ```
+
+두 번째 테스트는 첫 번째의 거울상이다: `AndroidDeviceSource`가 `Outcome.Err`를 내는 동안
+`IosDeviceSource`의 성공이 온전히 남는지 고정한다. `DeviceRepositoryImpl`이 두 소스를
+`coroutineScope`의 `async` 자식으로 실행하는 구조상, 어느 한쪽이 예외를 던지면(값이 아니라
+`Outcome.Err`가 아니라 실제 예외) 나머지 자식까지 취소된다 — 이 테스트가 잡는 것은 그 실패
+방향이 한쪽으로만 검증되어 있지 않다는 사각지대다.
 
 - [ ] **Step 2: 테스트 실패 확인**
 

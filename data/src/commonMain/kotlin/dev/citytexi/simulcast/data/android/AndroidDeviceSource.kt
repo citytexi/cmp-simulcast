@@ -27,6 +27,7 @@ class AndroidDeviceSource(
         val avdNames = locator.emulator()
             ?.let { emulator -> runner.run(Command(emulator, listOf("-list-avds")), TIMEOUT) }
             ?.let { it as? CommandResult.Completed }
+            ?.takeIf { it.exitCode == 0 }
             ?.stdout
             ?.lineSequence()
             ?.map(String::trim)

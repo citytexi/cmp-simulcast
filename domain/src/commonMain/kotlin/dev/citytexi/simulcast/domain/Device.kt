@@ -6,7 +6,8 @@ enum class DevicePlatform { ANDROID, IOS }
 enum class DeviceState { RUNNING, STARTING, STOPPED, UNAVAILABLE }
 
 /**
- * @param id 실행 중이면 adb serial 또는 simctl UDID, 정지 상태면 AVD 이름이다.
+ * @param id 안드로이드는 실행 중이면 adb serial, 정지 상태면 AVD 이름이다.
+ * iOS 는 실행 상태와 무관하게 항상 simctl UDID다.
  */
 data class Device(
     val id: String,

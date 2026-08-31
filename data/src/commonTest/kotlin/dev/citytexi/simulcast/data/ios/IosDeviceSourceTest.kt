@@ -128,6 +128,20 @@ class IosDeviceSourceTest {
     }
 
     @Test
+    fun reports_parse_failure_when_devices_is_not_an_object() = runTest {
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("simctl", "list", "devices", "--json") to
+                    CommandResult.Completed(0, """{"devices": []}""", ""),
+            ),
+        )
+
+        val result = IosDeviceSource(runner, locator).list()
+
+        assertIs<Outcome.Err<DeviceError.ParseFailed>>(result)
+    }
+
+    @Test
     fun reports_tool_not_found_when_xcrun_is_missing() = runTest {
         val emptyLocator = ToolLocator(env = emptyMap(), homeDir = "/h", exists = { false })
 
