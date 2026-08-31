@@ -2473,6 +2473,71 @@ class IosDeviceSourceTest {
     }
 
     @Test
+    fun skips_only_the_entry_missing_a_required_field() = runTest {
+        val partiallyMalformedJson = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-18-2": [
+                  { "udid": "AAA", "name": "iPhone 16", "state": "Booted", "isAvailable": true },
+                  { "name": "iPhone 16 Pro", "state": "Shutdown", "isAvailable": true },
+                  { "udid": "CCC", "name": "iPhone SE", "state": "Shutdown", "isAvailable": true }
+                ]
+              }
+            }
+        """.trimIndent()
+        val runner = FakeCommandRunner(
+            mapOf(listOf("simctl", "list", "devices", "--json") to CommandResult.Completed(0, partiallyMalformedJson, "")),
+        )
+
+        val result = IosDeviceSource(runner, locator).list()
+
+        assertEquals(
+            Outcome.Ok(
+                listOf(
+                    Device("AAA", "iPhone 16", DevicePlatform.IOS, DeviceState.RUNNING),
+                    Device("CCC", "iPhone SE", DevicePlatform.IOS, DeviceState.STOPPED),
+                )
+            ),
+            result,
+        )
+    }
+
+    @Test
+    fun maps_every_simctl_state_to_the_common_vocabulary() = runTest {
+        val stateJson = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-18-2": [
+                  { "udid": "AAA", "name": "iPhone 16", "state": "Booted", "isAvailable": true },
+                  { "udid": "BBB", "name": "iPhone 16 Pro", "state": "Shutdown", "isAvailable": true },
+                  { "udid": "CCC", "name": "iPhone 15", "state": "Booting", "isAvailable": true },
+                  { "udid": "DDD", "name": "iPhone 14", "state": "Shutting Down", "isAvailable": true },
+                  { "udid": "EEE", "name": "iPhone 13", "state": "Creating", "isAvailable": true }
+                ]
+              }
+            }
+        """.trimIndent()
+        val runner = FakeCommandRunner(
+            mapOf(listOf("simctl", "list", "devices", "--json") to CommandResult.Completed(0, stateJson, "")),
+        )
+
+        val result = IosDeviceSource(runner, locator).list()
+
+        assertEquals(
+            Outcome.Ok(
+                listOf(
+                    Device("AAA", "iPhone 16", DevicePlatform.IOS, DeviceState.RUNNING),
+                    Device("BBB", "iPhone 16 Pro", DevicePlatform.IOS, DeviceState.STOPPED),
+                    Device("CCC", "iPhone 15", DevicePlatform.IOS, DeviceState.STARTING),
+                    Device("DDD", "iPhone 14", DevicePlatform.IOS, DeviceState.STARTING),
+                    Device("EEE", "iPhone 13", DevicePlatform.IOS, DeviceState.UNAVAILABLE),
+                )
+            ),
+            result,
+        )
+    }
+
+    @Test
     fun reports_parse_failure_on_unreadable_output() = runTest {
         val runner = FakeCommandRunner(
             mapOf(listOf("simctl", "list", "devices", "--json") to CommandResult.Completed(0, "not json", "")),
@@ -2506,17 +2571,25 @@ Expected: FAIL — `Unresolved reference: IosDeviceSource`
 
 `data/src/commonMain/kotlin/dev/citytexi/simulcast/data/ios/SimctlJson.kt`:
 
+파서는 문서 전체를 한 번에 디코드하지 않는다. 항목 하나가 스키마에 안 맞아도(Xcode가 필드를
+바꿔서 필수 필드가 빠지는 등) 그 항목만 버리고 나머지는 살려야 하기 때문이다 — 구조 전체를
+한 데이터 클래스로 `decodeFromString` 하면 배열 안 원소 하나의 디코드 실패가 문서 전체의
+예외로 번진다. 그래서 JSON 트리로 파싱한 뒤 `devices` 객체를 꺼내고, 런타임 키를 거른 다음,
+남은 배열의 각 원소를 개별적으로 `SimctlDevice`로 디코드해 실패한 원소만 건너뛴다.
+
 ```kotlin
 package dev.citytexi.simulcast.data.ios
 
 import dev.citytexi.simulcast.domain.Device
 import dev.citytexi.simulcast.domain.DevicePlatform
 import dev.citytexi.simulcast.domain.DeviceState
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-
-@Serializable
-private data class SimctlList(val devices: Map<String, List<SimctlDevice>> = emptyMap())
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 
 @Serializable
 private data class SimctlDevice(
@@ -2528,15 +2601,29 @@ private data class SimctlDevice(
 
 private val json = Json { ignoreUnknownKeys = true }
 
-/** 런타임 키가 iOS 인 것, 그리고 실제로 띄울 수 있는 것만 남긴다. */
-fun parseSimctlDevices(raw: String): List<Device> =
-    json.decodeFromString<SimctlList>(raw)
-        .devices
+/**
+ * 런타임 키가 iOS 인 것, 그리고 실제로 띄울 수 있는 것만 남긴다.
+ * 항목 단위로 디코드해서, 스키마에 안 맞는 한 줄이 나머지 줄까지 끌고 내려가지 않게 한다.
+ */
+fun parseSimctlDevices(raw: String): List<Device> {
+    val devices = json.parseToJsonElement(raw).jsonObject["devices"]?.jsonObject
+        ?: error("simctl output has no \"devices\" object")
+
+    return devices
         .filterKeys { it.contains("SimRuntime.iOS") }
         .values
-        .flatten()
+        .flatMap { it.jsonArray }
+        .mapNotNull(::decodeDeviceOrNull)
         .filter { it.isAvailable }
         .map { Device(it.udid, it.name, DevicePlatform.IOS, it.state.toDeviceState()) }
+}
+
+private fun decodeDeviceOrNull(element: JsonElement): SimctlDevice? =
+    try {
+        json.decodeFromJsonElement(element)
+    } catch (e: SerializationException) {
+        null
+    }
 
 private fun String.toDeviceState(): DeviceState = when (this) {
     "Booted" -> DeviceState.RUNNING
@@ -2550,6 +2637,11 @@ private fun String.toDeviceState(): DeviceState = when (this) {
 
 `data/src/commonMain/kotlin/dev/citytexi/simulcast/data/ios/IosDeviceSource.kt`:
 
+`runCatching`은 `Throwable`을 넓게 잡아 `CancellationException`까지 삼킨다. 이 프로젝트는
+취소를 다시 던지는 규칙이라, 파서가 실제로 던질 수 있는 타입만 짚어서 잡는다 — JSON 파싱·
+트리 탐색·개별 원소 디코드 실패는 `SerializationException`, 문서 구조가 기대와 달라
+`error(...)`로 떨어지는 경우는 `IllegalStateException`.
+
 ```kotlin
 package dev.citytexi.simulcast.data.ios
 
@@ -2560,6 +2652,7 @@ import dev.citytexi.simulcast.domain.DeviceError
 import dev.citytexi.simulcast.process.Command
 import dev.citytexi.simulcast.process.CommandResult
 import dev.citytexi.simulcast.process.CommandRunner
+import kotlinx.serialization.SerializationException
 import kotlin.time.Duration.Companion.seconds
 
 class IosDeviceSource(
@@ -2576,11 +2669,13 @@ class IosDeviceSource(
                 if (result.exitCode != 0) {
                     Outcome.Err(DeviceError.ToolFailed("xcrun", result.exitCode, result.stderr.trim()))
                 } else {
-                    runCatching { parseSimctlDevices(result.stdout) }
-                        .fold(
-                            onSuccess = { Outcome.Ok(it) },
-                            onFailure = { Outcome.Err(DeviceError.ParseFailed("simctl", it.message ?: "")) },
-                        )
+                    try {
+                        Outcome.Ok(parseSimctlDevices(result.stdout))
+                    } catch (e: SerializationException) {
+                        Outcome.Err(DeviceError.ParseFailed("simctl", e.message ?: ""))
+                    } catch (e: IllegalStateException) {
+                        Outcome.Err(DeviceError.ParseFailed("simctl", e.message ?: ""))
+                    }
                 }
             is CommandResult.TimedOut -> Outcome.Err(DeviceError.Timeout("xcrun"))
             is CommandResult.StartFailed -> Outcome.Err(DeviceError.ToolNotFound("xcrun"))

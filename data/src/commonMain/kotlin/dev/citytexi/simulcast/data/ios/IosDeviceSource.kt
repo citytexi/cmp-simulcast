@@ -7,6 +7,7 @@ import dev.citytexi.simulcast.domain.DeviceError
 import dev.citytexi.simulcast.process.Command
 import dev.citytexi.simulcast.process.CommandResult
 import dev.citytexi.simulcast.process.CommandRunner
+import kotlinx.serialization.SerializationException
 import kotlin.time.Duration.Companion.seconds
 
 class IosDeviceSource(
@@ -23,11 +24,13 @@ class IosDeviceSource(
                 if (result.exitCode != 0) {
                     Outcome.Err(DeviceError.ToolFailed("xcrun", result.exitCode, result.stderr.trim()))
                 } else {
-                    runCatching { parseSimctlDevices(result.stdout) }
-                        .fold(
-                            onSuccess = { Outcome.Ok(it) },
-                            onFailure = { Outcome.Err(DeviceError.ParseFailed("simctl", it.message ?: "")) },
-                        )
+                    try {
+                        Outcome.Ok(parseSimctlDevices(result.stdout))
+                    } catch (e: SerializationException) {
+                        Outcome.Err(DeviceError.ParseFailed("simctl", e.message ?: ""))
+                    } catch (e: IllegalStateException) {
+                        Outcome.Err(DeviceError.ParseFailed("simctl", e.message ?: ""))
+                    }
                 }
             is CommandResult.TimedOut -> Outcome.Err(DeviceError.Timeout("xcrun"))
             is CommandResult.StartFailed -> Outcome.Err(DeviceError.ToolNotFound("xcrun"))
