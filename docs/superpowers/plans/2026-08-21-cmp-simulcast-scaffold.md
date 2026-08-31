@@ -1122,6 +1122,14 @@ git add core/process
 git commit -m "feat(process): time out via waitFor and reap the process tree"
 ```
 
+**사후 기록 (PR2 최종 리뷰 픽스 웨이브, `test(process): pin that a cancelled run reaps its child`):**
+`run`의 취소 대응을 고치면서 `try`/`finally`가 `coroutineScope` *안*, `waitFor` 주변에 있어야
+한다는 게 드러났다 — 바깥으로 빼면(자연스러워 보이는 리팩터링) `coroutineScope`가 자식(stdout/
+stderr 리더)의 join을 기다리는데 그 자식을 풀어줄 회수가 아직 안 도는 데드락이 재현된다.
+이 배치를 고정하는 `cancelling_run_reaps_the_child_instead_of_waiting_out_the_timeout`을
+`ProcessCommandRunnerRunTest`에 추가했다. 자세한 경위는
+`.superpowers/sdd/2026-08-21-cmp-simulcast-scaffold/pr2-final-fix-report.md` 참고.
+
 ---
 
 ### Task 7: stderr 대량 출력에서 데드락 없음
