@@ -11,12 +11,16 @@ related_code:
   - Outcome
   - CommandRunner
   - Command
+  - CommandResult
+  - ProcessCommandRunner
   - DeviceRepository
   - GetDevicesUseCase
   - DeviceListing
+  - DeviceError
   - ToolLocator
   - AndroidDeviceSource
   - IosDeviceSource
+  - parseSimctlDevices
   - DeviceRepositoryImpl
   - dataModule
   - DeviceListState
@@ -24,8 +28,10 @@ related_code:
   - devicesModule
   - DeviceListScreen
   - AppModules
+  - platformModule
   - Main
   - KoinGraphTest
+  - AppTheme
 tags: [architecture, gradle, di]
 ---
 
@@ -65,7 +71,7 @@ core:common
  └─ (없음)
 ```
 
-의존성은 항상 `app → feature/data → domain → core:process/core:designsystem → core:common` 방향으로만 흐른다. `feature:devices`에서 `data`로 가는 선은 없다 — 아래 [규칙](#어겨서는-안-되는-규칙과-강제-지점) 참고. `core:designsystem`은 `app`과 `feature:devices` 둘만 참조하며, 그 둘을 제외한 소비자는 없다.
+의존성은 위 다이어그램의 화살표 방향으로만 흐르고 역방향 참조는 없다 — 하위 레이어(`core:common`)가 상위 레이어를 참조하는 선은 어디에도 없다. `feature:devices`에서 `data`로 가는 선은 없다 — 아래 [규칙](#어겨서는-안-되는-규칙과-강제-지점) 참고. `core:designsystem`을 참조하는 모듈은 `app`과 `feature:devices`다.
 
 ## 컨벤션 플러그인과 각 모듈이 얹는 것
 
@@ -96,7 +102,7 @@ core:common
 - **`core:process`는 adb/simctl/emulator를 모른다.** `Command`·`CommandRunner`·`CommandResult`·`ProcessCommandRunner`는 실행 파일 경로와 인자 배열, 타임아웃만 다루는 범용 프로세스 실행기다. 어떤 도구를 어디서 찾고 어떤 인자를 넘기는지는 `data`의 `ToolLocator`(`adb()`·`emulator()`·`xcrun()`)와 `AndroidDeviceSource`·`IosDeviceSource`가 안다.
 - **`core:common`은 아무것도 의존하지 않는다.** `core/common/build.gradle.kts`가 `simulcast.kmp` 외에 아무 프로젝트 의존성도 얹지 않는 것으로 확인된다.
 - **실패는 `Outcome` 값이지 `kotlin.Result`도, `throw`도 아니다.** `domain`의 `DeviceError`(`ToolNotFound`·`ToolFailed`·`Timeout`·`ParseFailed`)와 `core:process`의 `CommandResult`(`Completed`·`TimedOut`·`StartFailed`)가 실패를 값으로 표현하는 두 축이다. `AndroidDeviceSource.list()`·`IosDeviceSource.list()`는 실패마다 `Outcome.Err`를 반환하지 `throw`하지 않는다. 이 결정의 근거는 [ADR-0004](../adr/0004-core-process-failures-as-values.md).
-- **`CancellationException`은 캐치되지 않는다.** `core:process`·`data` 어디에도 `catch (e: Exception)`·`catch (e: Throwable)` 같은 넓은 캐치가 없다. `ProcessCommandRunner`는 `IOException`만, `IosDeviceSource`/`SimctlJson`은 `SerializationException`·`IllegalStateException`만 잡는다. `IosDeviceSource.list()`의 `catch (e: IllegalStateException)`이 감싸는 것은 `parseSimctlDevices`(비-suspend 순수 함수) 호출 하나뿐이라, 그 블록 안에는 애초에 취소가 발생할 suspend 지점이 없다 — `SimctlJson.kt`의 주석대로 `error()`가 던지는 `IllegalStateException`만 여기서 잡힌다.
+- **`CancellationException`은 캐치되지 않는다.** `core:process`·`data` 어디에도 `catch (e: Exception)`·`catch (e: Throwable)` 같은 넓은 캐치가 없다. `ProcessCommandRunner`는 `IOException`만, `IosDeviceSource`/`SimctlJson`은 `SerializationException`·`IllegalStateException`만 잡는다. `IosDeviceSource.list()`의 `catch (e: IllegalStateException)`이 감싸는 것은 `parseSimctlDevices`(비-suspend 순수 함수) 호출 하나뿐이라, 그 블록 안에는 애초에 취소가 발생할 suspend 지점이 없다 — `SimctlJson.kt`의 주석대로 `error()`가 던지는 `IllegalStateException`만 여기서 잡힌다. 취소를 삼키지 않아야 한다는 근거는 [ADR-0004](../adr/0004-core-process-failures-as-values.md).
 
 ## 새 모듈을 어디에 둘지
 
