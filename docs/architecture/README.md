@@ -10,7 +10,7 @@
 
 | 문서 | 내용 |
 |------|------|
-| _(아직 없음)_ | |
+| [module-structure.md](module-structure.md) | 모듈 그래프, 컨벤션 플러그인별 주입 의존성, `api`/`implementation` 기준, 합성 루트(`AppModules`) 구성, 기기 목록 데이터 흐름 |
 
 ## Frontmatter (필수)
 
