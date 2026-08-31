@@ -34,4 +34,24 @@ class DropCountingSinkTest {
 
         assertEquals(listOf<CommandEvent>(CommandEvent.Stdout("a")), accepted)
     }
+
+    @Test
+    fun keeps_the_count_when_the_dropped_report_itself_fails() {
+        val accepted = mutableListOf<CommandEvent>()
+        val results = ArrayDeque(listOf(false, false, false, true, true))
+        val sink = DropCountingSink { event ->
+            val ok = results.removeFirst()
+            if (ok) accepted += event
+            ok
+        }
+
+        sink.offer(CommandEvent.Stdout("a"))
+        sink.offer(CommandEvent.Stdout("b"))
+        sink.offer(CommandEvent.Stdout("c"))
+
+        assertEquals(
+            listOf(CommandEvent.Dropped(2), CommandEvent.Stdout("c")),
+            accepted,
+        )
+    }
 }

@@ -1382,9 +1382,14 @@ git commit -m "test(process): pin descendant reaping on stream cancellation"
 `callbackFlow`의 채널이 차면 `trySend`가 실패하고 그 줄은 경고 없이 사라진다. logcat은 초당 수천 줄을 뿜고 로그 뷰어가 이 앱의 핵심 가치이므로, 버린 줄 수를 `Dropped`로 알린다. 드롭 계산은 순수 클래스로 떼어 결정적으로 테스트한다 — 실제 프로세스로 오버플로를 재현하면 타이밍에 기대는 불안정한 테스트가 된다.
 
 **Files:**
-- Create: `core/process/src/commonMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`
+- Create: `core/process/src/jvmMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`
 - Modify: `core/process/src/jvmMain/kotlin/dev/citytexi/simulcast/process/ProcessCommandRunner.kt`
-- Test: `core/process/src/commonTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`
+- Test: `core/process/src/jvmTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`
+
+`DropCountingSink`는 `internal`이고 유일한 소비자인 `ProcessCommandRunner`가 이미 `jvmMain`에
+있으므로 `commonMain`이 아니라 `jvmMain`에 둔다 — 공개 계약만 `commonMain`에 두는 모듈 경계와
+일치하고, `offer`가 두 리더 코루틴에서 동시에 불려 카운터를 원자적으로 다뤄야 하는데
+`java.util.concurrent.atomic`은 JVM 전용이라 그 표현이 `jvmMain`에서만 자연스럽다.
 
 **Interfaces:**
 - Consumes: Task 8의 `stream`
@@ -1392,7 +1397,7 @@ git commit -m "test(process): pin descendant reaping on stream cancellation"
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
-`core/process/src/commonTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`:
+`core/process/src/jvmTest/kotlin/dev/citytexi/simulcast/process/DropCountingSinkTest.kt`:
 
 ```kotlin
 package dev.citytexi.simulcast.process
@@ -1429,7 +1434,27 @@ class DropCountingSinkTest {
 
         sink.offer(CommandEvent.Stdout("a"))
 
-        assertEquals(listOf(CommandEvent.Stdout("a")), accepted)
+        assertEquals(listOf<CommandEvent>(CommandEvent.Stdout("a")), accepted)
+    }
+
+    @Test
+    fun keeps_the_count_when_the_dropped_report_itself_fails() {
+        val accepted = mutableListOf<CommandEvent>()
+        val results = ArrayDeque(listOf(false, false, false, true, true))
+        val sink = DropCountingSink { event ->
+            val ok = results.removeFirst()
+            if (ok) accepted += event
+            ok
+        }
+
+        sink.offer(CommandEvent.Stdout("a"))
+        sink.offer(CommandEvent.Stdout("b"))
+        sink.offer(CommandEvent.Stdout("c"))
+
+        assertEquals(
+            listOf(CommandEvent.Dropped(2), CommandEvent.Stdout("c")),
+            accepted,
+        )
     }
 }
 ```
@@ -1444,24 +1469,28 @@ Expected: FAIL — `Unresolved reference: DropCountingSink`
 
 - [ ] **Step 3: 구현 작성**
 
-`core/process/src/commonMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`:
+`core/process/src/jvmMain/kotlin/dev/citytexi/simulcast/process/DropCountingSink.kt`:
 
 ```kotlin
 package dev.citytexi.simulcast.process
+
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * @param send 채널이 받아들였으면 true. 실패한 이벤트는 버려진 것으로 센다.
  */
 internal class DropCountingSink(private val send: (CommandEvent) -> Boolean) {
 
-    private var dropped = 0
+    // stdout/stderr 두 리더 코루틴이 서로 다른 스레드에서 동시에 offer를 호출한다.
+    private val dropped = AtomicInteger(0)
 
     fun offer(event: CommandEvent) {
-        if (dropped > 0 && send(CommandEvent.Dropped(dropped))) {
-            dropped = 0
+        val pending = dropped.getAndSet(0)
+        if (pending > 0 && !send(CommandEvent.Dropped(pending))) {
+            dropped.addAndGet(pending)
         }
         if (!send(event)) {
-            dropped++
+            dropped.incrementAndGet()
         }
     }
 }
