@@ -2237,8 +2237,70 @@ class AndroidDeviceSourceTest {
 
         assertEquals(Outcome.Err(DeviceError.ToolFailed("adb", 1, "adb: no permissions")), result)
     }
+
+    @Test
+    fun lists_running_devices_when_emulator_is_not_found() = runTest {
+        val adbOnlyLocator = ToolLocator(
+            env = mapOf("ANDROID_HOME" to "/sdk"),
+            homeDir = "/h",
+            exists = { it == "/sdk/platform-tools/adb" },
+        )
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("devices", "-l") to CommandResult.Completed(
+                    0,
+                    "List of devices attached\nemulator-5554  device transport_id:1\n",
+                    "",
+                ),
+                listOf("-s", "emulator-5554", "emu", "avd", "name") to
+                    CommandResult.Completed(0, "Pixel_7\nOK\n", ""),
+            ),
+        )
+
+        val result = AndroidDeviceSource(runner, adbOnlyLocator).list()
+
+        assertEquals(
+            Outcome.Ok(
+                listOf(Device("emulator-5554", "Pixel_7", DevicePlatform.ANDROID, DeviceState.RUNNING)),
+            ),
+            result,
+        )
+    }
+
+    @Test
+    fun leaves_an_avd_listed_as_stopped_when_its_running_name_cannot_be_resolved() = runTest {
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("-list-avds") to CommandResult.Completed(0, "Pixel_7\n", ""),
+                listOf("devices", "-l") to CommandResult.Completed(
+                    0,
+                    "List of devices attached\nemulator-5554  device transport_id:1\n",
+                    "",
+                ),
+                listOf("-s", "emulator-5554", "emu", "avd", "name") to
+                    CommandResult.Completed(1, "", "device offline"),
+            ),
+        )
+
+        val result = AndroidDeviceSource(runner, locator).list()
+
+        assertEquals(
+            Outcome.Ok(
+                listOf(
+                    Device("emulator-5554", "emulator-5554", DevicePlatform.ANDROID, DeviceState.RUNNING),
+                    Device("Pixel_7", "Pixel_7", DevicePlatform.ANDROID, DeviceState.STOPPED),
+                )
+            ),
+            result,
+        )
+    }
 }
 ```
+
+네 번째 테스트는 알려진 잔여 한계를 고정한다: `emu avd name` 조회가 실패하면 그 에뮬레이터는 serial
+이름으로 `RUNNING` 표시되고, 진짜 AVD 이름은 어느 실행 중 기기와도 매칭되지 않아 `STOPPED`로도
+나타난다 — 같은 AVD가 두 행으로 보일 수 있다는 뜻이다. 이는 정보 부족에서 오는 한계이지 추정으로
+메울 대상이 아니다(구현의 `list()` KDoc 참고).
 
 - [ ] **Step 3: 테스트 실패 확인**
 
@@ -2271,6 +2333,11 @@ class AndroidDeviceSource(
     private val locator: ToolLocator,
 ) {
 
+    /**
+     * 실행 중인 기기의 AVD 이름을 못 얻으면(예: `emu avd name` 실패) 그 기기는 serial 이름으로
+     * `RUNNING` 표시되고, 같은 AVD 가 정지 목록에도 남아 중복으로 보일 수 있다 — 어느 AVD인지
+     * 알 방법이 없어서 생기는 정보 한계이지 추정으로 메울 대상이 아니다.
+     */
     suspend fun list(): Outcome<List<Device>, DeviceError> {
         val adb = locator.adb() ?: return Outcome.Err(DeviceError.ToolNotFound("adb"))
 
@@ -2292,11 +2359,11 @@ class AndroidDeviceSource(
             is CommandResult.StartFailed -> return Outcome.Err(DeviceError.ToolNotFound("adb"))
         }
 
-        val running = attached.map { entry ->
-            val avdName = avdNameOf(adb, entry.serial)
+        val resolved = attached.map { entry -> entry to avdNameOf(adb, entry.serial) }
+        val running = resolved.map { (entry, avdName) ->
             Device(entry.serial, avdName ?: entry.serial, DevicePlatform.ANDROID, entry.state)
         }
-        val runningAvdNames = running.mapNotNull { it.name }.toSet()
+        val runningAvdNames = resolved.mapNotNull { (_, avdName) -> avdName }.toSet()
         val stopped = avdNames
             .filterNot { it in runningAvdNames }
             .map { Device(it, it, DevicePlatform.ANDROID, DeviceState.STOPPED) }

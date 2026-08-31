@@ -16,6 +16,11 @@ class AndroidDeviceSource(
     private val locator: ToolLocator,
 ) {
 
+    /**
+     * 실행 중인 기기의 AVD 이름을 못 얻으면(예: `emu avd name` 실패) 그 기기는 serial 이름으로
+     * `RUNNING` 표시되고, 같은 AVD 가 정지 목록에도 남아 중복으로 보일 수 있다 — 어느 AVD인지
+     * 알 방법이 없어서 생기는 정보 한계이지 추정으로 메울 대상이 아니다.
+     */
     suspend fun list(): Outcome<List<Device>, DeviceError> {
         val adb = locator.adb() ?: return Outcome.Err(DeviceError.ToolNotFound("adb"))
 
@@ -37,11 +42,11 @@ class AndroidDeviceSource(
             is CommandResult.StartFailed -> return Outcome.Err(DeviceError.ToolNotFound("adb"))
         }
 
-        val running = attached.map { entry ->
-            val avdName = avdNameOf(adb, entry.serial)
+        val resolved = attached.map { entry -> entry to avdNameOf(adb, entry.serial) }
+        val running = resolved.map { (entry, avdName) ->
             Device(entry.serial, avdName ?: entry.serial, DevicePlatform.ANDROID, entry.state)
         }
-        val runningAvdNames = running.mapNotNull { it.name }.toSet()
+        val runningAvdNames = resolved.mapNotNull { (_, avdName) -> avdName }.toSet()
         val stopped = avdNames
             .filterNot { it in runningAvdNames }
             .map { Device(it, it, DevicePlatform.ANDROID, DeviceState.STOPPED) }

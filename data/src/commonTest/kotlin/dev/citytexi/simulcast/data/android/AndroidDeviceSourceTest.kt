@@ -70,4 +70,61 @@ class AndroidDeviceSourceTest {
 
         assertEquals(Outcome.Err(DeviceError.ToolFailed("adb", 1, "adb: no permissions")), result)
     }
+
+    @Test
+    fun lists_running_devices_when_emulator_is_not_found() = runTest {
+        val adbOnlyLocator = ToolLocator(
+            env = mapOf("ANDROID_HOME" to "/sdk"),
+            homeDir = "/h",
+            exists = { it == "/sdk/platform-tools/adb" },
+        )
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("devices", "-l") to CommandResult.Completed(
+                    0,
+                    "List of devices attached\nemulator-5554  device transport_id:1\n",
+                    "",
+                ),
+                listOf("-s", "emulator-5554", "emu", "avd", "name") to
+                    CommandResult.Completed(0, "Pixel_7\nOK\n", ""),
+            ),
+        )
+
+        val result = AndroidDeviceSource(runner, adbOnlyLocator).list()
+
+        assertEquals(
+            Outcome.Ok(
+                listOf(Device("emulator-5554", "Pixel_7", DevicePlatform.ANDROID, DeviceState.RUNNING)),
+            ),
+            result,
+        )
+    }
+
+    @Test
+    fun leaves_an_avd_listed_as_stopped_when_its_running_name_cannot_be_resolved() = runTest {
+        val runner = FakeCommandRunner(
+            mapOf(
+                listOf("-list-avds") to CommandResult.Completed(0, "Pixel_7\n", ""),
+                listOf("devices", "-l") to CommandResult.Completed(
+                    0,
+                    "List of devices attached\nemulator-5554  device transport_id:1\n",
+                    "",
+                ),
+                listOf("-s", "emulator-5554", "emu", "avd", "name") to
+                    CommandResult.Completed(1, "", "device offline"),
+            ),
+        )
+
+        val result = AndroidDeviceSource(runner, locator).list()
+
+        assertEquals(
+            Outcome.Ok(
+                listOf(
+                    Device("emulator-5554", "emulator-5554", DevicePlatform.ANDROID, DeviceState.RUNNING),
+                    Device("Pixel_7", "Pixel_7", DevicePlatform.ANDROID, DeviceState.STOPPED),
+                )
+            ),
+            result,
+        )
+    }
 }
