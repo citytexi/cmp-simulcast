@@ -607,16 +607,26 @@ plugins {
 `build-logic/src/main/kotlin/simulcast.desktop.app.gradle.kts`:
 
 ```kotlin
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     id("simulcast.compose")
 }
 
+// compose.desktop.application.javaHome defaults to the Gradle daemon's own JVM, not the
+// project's kotlin { jvmToolchain(21) } — without pinning it here, :app:run and packageDmg
+// launch/bundle against whatever JDK started the daemon, which can be older than 21.
+val toolchain21 = the<JavaToolchainService>().launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+}
+
 extensions.configure<org.jetbrains.compose.ComposeExtension> {
     extensions.configure<org.jetbrains.compose.desktop.DesktopExtension> {
         application {
             mainClass = "dev.citytexi.simulcast.MainKt"
+            javaHome = toolchain21.get().metadata.installationPath.asFile.absolutePath
             nativeDistributions {
                 targetFormats(TargetFormat.Dmg)
                 packageName = "cmp-simulcast"
@@ -696,6 +706,7 @@ kotlin {
     sourceSets {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
+            implementation(compose.material3)
             implementation(libs.kotlinx.coroutines.swing)
             implementation(project(":core:designsystem"))
         }
