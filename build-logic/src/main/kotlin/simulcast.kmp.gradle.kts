@@ -4,7 +4,7 @@ plugins {
 
 kotlin {
     jvm()
-    jvmToolchain(21)
+    jvmToolchain(JVM_TOOLCHAIN)
 
     sourceSets {
         commonMain.dependencies {

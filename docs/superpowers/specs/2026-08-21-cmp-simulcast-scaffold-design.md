@@ -46,6 +46,7 @@ iOS는 ScreenCaptureKit 창 캡처)으로 우회해야 하며 전체 공수의 �
 | 빌드 타깃 | Kotlin Multiplatform, `jvm()` 타깃 하나 | 지금은 Desktop 하나뿐이라 KMP 레이어가 순수 비용이다. 그럼에도 KMP로 두는 것은 나중에 Windows·Linux 데스크톱을 지원할 때 플러그인·소스셋 구조를 갈아엎지 않고 타깃 한 줄만 추가하면 되기 때문이다. 지불하는 비용은 `commonMain`/`jvmMain` 계층이다 |
 | Kotlin | 2.3.21 | 아래 [버전 조합](#버전-조합) 참고 |
 | Compose Multiplatform | 1.11.1 | 위와 같음 |
+| material3 | 1.9.0 | 우리 카탈로그가 아니라 Compose Multiplatform 1.11.1 Gradle 플러그인이 고르는 버전이다(`ComposeBuildConfig.composeMaterial3Version`). 그래서 `checkJvmMainComposeLibrariesCompatibility` 경고가 빌드에 찍힌다 — material3 API 차이를 디버깅할 때는 1.11.1이 아니라 이 버전의 문서를 봐야 한다 |
 | JVM toolchain | 21 | `jpackage`가 JDK 17 이상을 요구하고, Compose Hot Reload는 JetBrains Runtime 호환을 위해 타깃 21 이하를 요구한다. 둘을 동시에 만족하는 값이다 |
 | Gradle | 9.7.1 | wrapper로 고정. KGP 2.3.21과의 조합은 스파이크에서 확인한다 |
 | DI | Koin 4.2.2 | 모듈마다 `module { }` 정의를 두고 `app`이 모아 시작하는 구조라, feature가 늘어도 `app`의 변경이 한 줄이다. KSP가 들어오지 않아 컨벤션 플러그인과 빌드 시간이 단순해진다 |
@@ -311,9 +312,10 @@ sealed interface DeviceError {
 붙으면 이름이 거짓이 된다. `simulcast.desktop.app`은 `simulcast.kmp` 위에 얹는 것이지 대체하는
 것이 아니다.
 
-`simulcast.feature`가 의존을 자동 주입하므로 feature 모듈의 build 파일은 `plugins { }` 한 블록으로
-끝난다. feature가 늘어날 때 복사해야 할 보일러플레이트가 없고, "feature는 data를 모른다" 규칙이
-기본값으로 지켜진다.
+`simulcast.feature`가 domain·`core:designsystem`·`core:common`·Orbit·ViewModel 배선 의존을
+자동 주입하므로, feature 모듈의 build 파일은 `plugins { }` 블록에 그 모듈에서만 필요한 의존
+(예: `compose.material3`) 몇 줄을 더하는 정도로 끝난다. feature가 늘어날 때 복사해야 할
+보일러플레이트가 크게 없고, "feature는 data를 모른다" 규칙이 기본값으로 지켜진다.
 
 **컨벤션 플러그인에서 카탈로그를 읽는 방법.** precompiled script plugin에서는 타입세이프 `libs`
 접근자가 생성되지 않는다. `project.extensions.getByType<VersionCatalogsExtension>().named("libs")`로

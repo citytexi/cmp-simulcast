@@ -12,3 +12,6 @@ __pycache__/
 .gradle/
 build/
 local.properties
+.kotlin/
+.idea/
+*.iml

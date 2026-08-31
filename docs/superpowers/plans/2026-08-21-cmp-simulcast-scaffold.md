@@ -328,7 +328,7 @@ git commit -m "docs: add proposed ADRs for the scaffold decisions"
 - Create: `build-logic/src/main/kotlin/Catalog.kt`
 - Create: `build-logic/src/main/kotlin/simulcast.kmp.gradle.kts`
 - Create: `core/common/build.gradle.kts`
-- Test: `core/common/src/commonTest/kotlin/dev/citytexi/simulcast/common/ToolchainTest.kt`
+- Test: `core/common/src/jvmTest/kotlin/dev/citytexi/simulcast/common/ToolchainTest.kt`
 - Modify: `.gitignore`
 
 **Interfaces:**
@@ -393,6 +393,8 @@ turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 `settings.gradle.kts`. `foojay-resolver-convention`이 toolchain 21을 자동으로 내려받는다 — 이 기계에 설치된 JDK는 17이 최대다.
 
 ```kotlin
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
 pluginManagement {
     includeBuild("build-logic")
     repositories {
@@ -407,6 +409,7 @@ plugins {
 }
 
 dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
@@ -446,10 +449,6 @@ plugins {
     `kotlin-dsl`
 }
 
-kotlin {
-    jvmToolchain(17)
-}
-
 dependencies {
     implementation(libs.kotlin.gradlePlugin)
     implementation(libs.kotlin.composeCompilerGradlePlugin)
@@ -477,6 +476,8 @@ internal val Project.libs: VersionCatalog
 
 internal fun VersionCatalog.lib(alias: String): Provider<MinimalExternalModuleDependency> =
     findLibrary(alias).orElseThrow { IllegalArgumentException("libs.versions.toml 에 '$alias' 없음") }
+
+internal const val JVM_TOOLCHAIN = 21
 ```
 
 - [ ] **Step 6: `simulcast.kmp` 컨벤션 플러그인 작성**
@@ -484,15 +485,13 @@ internal fun VersionCatalog.lib(alias: String): Provider<MinimalExternalModuleDe
 `build-logic/src/main/kotlin/simulcast.kmp.gradle.kts`:
 
 ```kotlin
-import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-
 plugins {
     kotlin("multiplatform")
 }
 
 kotlin {
     jvm()
-    jvmToolchain(21)
+    jvmToolchain(JVM_TOOLCHAIN)
 
     sourceSets {
         commonMain.dependencies {
@@ -508,9 +507,9 @@ kotlin {
 
 - [ ] **Step 7: 실패하는 테스트 작성**
 
-toolchain 21이 실제로 적용됐는지 확인한다. 이 기계의 기본 JDK는 17이라, 컨벤션 플러그인이 toolchain을 제대로 걸지 않으면 이 테스트가 떨어진다.
+toolchain 21이 실제로 적용됐는지 확인한다. 이 기계의 기본 JDK는 17이라, 컨벤션 플러그인이 toolchain을 제대로 걸지 않으면 이 테스트가 떨어진다. `System.getProperty("java.version")`은 JVM API라 `jvmTest`에 둔다 — `commonTest`에 두면 지금은 `jvm()`이 유일한 타깃이라 우연히 컴파일되지만, 타깃이 하나 더 늘어나는 순간 깨진다.
 
-`core/common/src/commonTest/kotlin/dev/citytexi/simulcast/common/ToolchainTest.kt`:
+`core/common/src/jvmTest/kotlin/dev/citytexi/simulcast/common/ToolchainTest.kt`:
 
 ```kotlin
 package dev.citytexi.simulcast.common
@@ -619,7 +618,7 @@ plugins {
 // project's kotlin { jvmToolchain(21) } — without pinning it here, :app:run and packageDmg
 // launch/bundle against whatever JDK started the daemon, which can be older than 21.
 val toolchain21 = the<JavaToolchainService>().launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(21))
+    languageVersion.set(JavaLanguageVersion.of(JVM_TOOLCHAIN))
 }
 
 extensions.configure<org.jetbrains.compose.ComposeExtension> {
@@ -630,6 +629,8 @@ extensions.configure<org.jetbrains.compose.ComposeExtension> {
             nativeDistributions {
                 targetFormats(TargetFormat.Dmg)
                 packageName = "cmp-simulcast"
+                // macOS 번들 버전은 major가 1 이상이어야 한다 — "0.1.0"이면 jpackage가 실패한다.
+                // 제품 로드맵은 v0.1이지만 이 값은 그것과 무관하게 1.0.0으로 고정한다.
                 packageVersion = "1.0.0"
                 macOS {
                     bundleID = "dev.citytexi.simulcast"

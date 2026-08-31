@@ -10,3 +10,5 @@ internal val Project.libs: VersionCatalog
 
 internal fun VersionCatalog.lib(alias: String): Provider<MinimalExternalModuleDependency> =
     findLibrary(alias).orElseThrow { IllegalArgumentException("libs.versions.toml 에 '$alias' 없음") }
+
+internal const val JVM_TOOLCHAIN = 21
