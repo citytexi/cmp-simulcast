@@ -4,7 +4,7 @@ title: 모듈 구조와 의존성 규칙
 category: architecture
 status: living
 platforms: desktop
-verified: 2026-08-31
+verified: 2026-09-01
 related_adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004]
 related_architecture:
 related_code:
@@ -80,21 +80,21 @@ core:common
 | 컨벤션 플러그인 | 적용 모듈 | 주입하는 것 |
 |---|---|---|
 | `simulcast.kmp` | 모든 모듈의 바탕 | `kotlin("multiplatform")` + `jvm()` 단일 타깃(`jvmToolchain(21)`), `commonMain`에 `kotlinx-coroutines-core`, `commonTest`에 `kotlin("test")` + `kotlinx-coroutines-test`. 프로젝트 의존성은 주입하지 않는다. |
-| `simulcast.compose` | `core:designsystem`, `simulcast.feature`·`simulcast.desktop.app`을 통해 `feature:devices`·`app` | `simulcast.kmp` + `org.jetbrains.compose` + `org.jetbrains.kotlin.plugin.compose`. |
+| `simulcast.compose` | `core:designsystem`, `simulcast.feature`·`simulcast.desktop.app`을 통해 `feature:devices`·`app` | `simulcast.kmp` + `org.jetbrains.compose` + `org.jetbrains.kotlin.plugin.compose`, `commonMain`에 `compose.runtime`·`compose.foundation`·`compose.ui` — material3가 자기 트랙에서 끌어오는 구버전을, `strictly` 없는 보통의 최고 버전 우선 해석으로 카탈로그의 `compose` 버전까지 끌어올린다. |
 | `simulcast.koin` | `data`, `simulcast.feature`를 통해 `feature:devices` | `simulcast.kmp` + `commonMain`에 `koin-core`, `commonTest`에 `koin-test`. |
 | `simulcast.serialization` | `data` | `simulcast.kmp` + `org.jetbrains.kotlin.plugin.serialization` + `commonMain`에 `kotlinx-serialization-json`. |
-| `simulcast.feature` | `feature:devices` | `simulcast.compose` + `simulcast.koin` 위에 `commonMain`에서 `api(project(":domain"))`, `implementation(project(":core:designsystem"))`, `api(orbit-core)`, `implementation(orbit-viewmodel, orbit-compose, koin-compose, koin-composeViewmodel)`; `commonTest`에 `orbit-test`, `turbine`. **`project(":data")`는 여기 없다** — `feature` 계열 모듈은 이 플러그인을 통해서만 프로젝트 의존성을 받으므로, `data`가 안 보이는 게 곧 "feature는 data를 모른다" 규칙의 강제 지점이다. |
+| `simulcast.feature` | `feature:devices` | `simulcast.compose` + `simulcast.koin` 위에 `commonMain`에서 `api(project(":domain"))`, `implementation(project(":core:designsystem"))`, `api(orbit-core)`, `api(androidx-lifecycle-viewmodel)`, `implementation(orbit-viewmodel, orbit-compose, koin-compose, koin-composeViewmodel)`; `commonTest`에 `orbit-test`, `turbine`. **`project(":data")`는 여기 없다** — `feature` 계열 모듈은 이 플러그인을 통해서만 프로젝트 의존성을 받으므로, `data`가 안 보이는 게 곧 "feature는 data를 모른다" 규칙의 강제 지점이다. |
 | `simulcast.desktop.app` | `app` | `simulcast.compose` 위에 데스크톱 실행/패키징(`compose.desktop.application`의 `mainClass`, `nativeDistributions`, `TargetFormat.Dmg`, `packageName`, `bundleID`)과 Gradle 데몬 JVM과 무관하게 JDK 21로 고정하는 `javaHome` 툴체인 설정. 프로젝트 의존성은 주입하지 않는다. |
 
 각 모듈의 `build.gradle.kts`는 컨벤션 플러그인이 주지 않는 것만 덧붙인다:
 
 - `core:common/build.gradle.kts` — `simulcast.kmp`만 적용하고 그 외 아무것도 없다. 프로젝트 의존성 없음이 곧 "core:common은 아무것도 의존하지 않는다" 규칙 자체다.
 - `core:process/build.gradle.kts` — `simulcast.kmp` + `implementation(project(":core:common"))`. `adb`·`emulator`·`simctl` 같은 문자열은 이 모듈 어디에도 없다(아래 참고).
-- `core:designsystem/build.gradle.kts` — `simulcast.compose` + `implementation(compose.material3)` + `implementation(project(":core:common"))`.
+- `core:designsystem/build.gradle.kts` — `simulcast.compose` + `implementation(libs.compose.material3)` + `implementation(project(":core:common"))`.
 - `domain/build.gradle.kts` — `simulcast.kmp` + `api(project(":core:common"))`. `Outcome`이 `DeviceListing`·`DeviceRepository`의 공개 시그니처에 그대로 노출되므로 `api`.
 - `data/build.gradle.kts` — `simulcast.kmp` + `simulcast.serialization` + `simulcast.koin` 위에 `implementation(project(":domain"))`, `implementation(project(":core:process"))`.
-- `feature/devices/build.gradle.kts` — `simulcast.feature` 위에 `implementation(compose.material3)` 하나만 추가.
-- `app/build.gradle.kts` — `simulcast.desktop.app` 위에 `jvmMain`에서 `compose.desktop.currentOs`, `compose.material3`, `kotlinx-coroutines-swing`, 그리고 `core:designsystem`·`core:process`·`data`·`domain`·`feature:devices` 전체와 `koin-core`·`koin-compose`를 `implementation`으로 묶는다. **이 프로젝트들을 전부 아는 것은 `app`뿐이다** — 합성 루트이기 때문.
+- `feature/devices/build.gradle.kts` — `simulcast.feature` 위에 `implementation(libs.compose.material3)` 하나만 추가.
+- `app/build.gradle.kts` — `simulcast.desktop.app` 위에 `jvmMain`에서 `compose.desktop.currentOs`, `libs.compose.material3`, `kotlinx-coroutines-swing`, 그리고 `core:designsystem`·`core:process`·`data`·`domain`·`feature:devices` 전체와 `koin-core`·`koin-compose`를 `implementation`으로 묶는다. **이 프로젝트들을 전부 아는 것은 `app`뿐이다** — 합성 루트이기 때문.
 
 ## 어겨서는 안 되는 규칙과 강제 지점
 
@@ -120,6 +120,7 @@ core:common
 - `domain/build.gradle.kts`의 `api(project(":core:common"))` — `Outcome`이 `DeviceRepository.listDevices()`·`GetDevicesUseCase.invoke()`의 반환 타입에 그대로 나온다.
 - `simulcast.feature`의 `api(project(":domain"))` — `DeviceListViewModel`의 생성자 파라미터가 `GetDevicesUseCase`다.
 - `simulcast.feature`의 `api(libs.lib("orbit-core"))` — `DeviceListViewModel`이 `OrbitContainerHost<DeviceListState, DeviceListState, Nothing>`를 상속하므로 `orbit-core`의 타입이 곧 이 클래스의 상위 타입이다.
+- `simulcast.feature`의 `api(libs.lib("androidx-lifecycle-viewmodel"))` — 같은 이유. `DeviceListViewModel`이 `ViewModel()`도 상속하므로 이 타입 역시 상위 타입이다.
 - 그 외(`core:designsystem`, `orbit-viewmodel`, `orbit-compose`, `koin-compose`, `koin-composeViewmodel`, `core:process` 등)는 전부 `implementation` — 소비자 모듈의 공개 시그니처에 등장하지 않는다.
 
 ## 합성 루트 (`app`)

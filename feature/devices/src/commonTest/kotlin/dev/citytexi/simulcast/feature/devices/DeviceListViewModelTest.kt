@@ -75,10 +75,52 @@ class DeviceListViewModelTest {
 
         assertEquals(1, repository.callCount)
     }
+
+    @Test
+    fun refresh_resets_loading_and_recovers_when_getDevices_throws_unexpectedly() = runTest {
+        val repository = ThrowingThenSucceedingRepository(listing)
+        val viewModel = DeviceListViewModel(GetDevicesUseCase(repository))
+
+        // What this pins: (1) loading comes back to false and the thrown message lands in
+        // refreshFailure instead of vanishing, and (2) a later refresh() still runs to
+        // completion (callCount reaches 2) — the guard/container are not bricked by the throw.
+        //
+        // What this does NOT and cannot pin: the production no-rethrow decision itself.
+        // testWithInternalState swaps in its own RealContainer wired with orbit-test's own
+        // (non-null) exceptionHandler, and RealContainer's dispatch loop only rethrows an
+        // intent's uncaught exception when settings.exceptionHandler is null — so under
+        // orbit-test the container always survives an intent throw regardless of whether this
+        // code rethrows after resetting state. A catch-and-rethrow variant would pass both
+        // expectInternalState calls below too, and only diverge from this fix in production,
+        // where DeviceListViewModel never installs an exceptionHandler.
+        viewModel.testWithInternalState(this) {
+            containerHost.refresh()
+            expectInternalState { copy(loading = true) }
+            expectInternalState { copy(loading = false, refreshFailure = "boom") }
+
+            containerHost.refresh()
+            expectInternalState { copy(loading = true, refreshFailure = null) }
+            expectInternalState { copy(loading = false, android = listing.android, ios = listing.ios) }
+        }
+
+        assertEquals(2, repository.callCount)
+    }
 }
 
 private class FakeRepository(private val listing: DeviceListing) : DeviceRepository {
     override suspend fun listDevices(): DeviceListing = listing
+}
+
+/** Throws on its first call, then behaves like [FakeRepository] — simulates a contract violation. */
+private class ThrowingThenSucceedingRepository(private val listing: DeviceListing) : DeviceRepository {
+    var callCount = 0
+        private set
+
+    override suspend fun listDevices(): DeviceListing {
+        callCount++
+        if (callCount == 1) error("boom")
+        return listing
+    }
 }
 
 /** Suspends [listDevices] until [complete] is called, so a test can hold an intent in flight. */
