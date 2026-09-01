@@ -9,6 +9,7 @@ kotlin {
             api(project(":domain"))
             implementation(project(":core:designsystem"))
             api(libs.lib("orbit-core"))
+            api(libs.lib("androidx-lifecycle-viewmodel"))
             implementation(libs.lib("orbit-viewmodel"))
             implementation(libs.lib("orbit-compose"))
             implementation(libs.lib("koin-compose"))
