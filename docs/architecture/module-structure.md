@@ -80,7 +80,7 @@ core:common
 | 컨벤션 플러그인 | 적용 모듈 | 주입하는 것 |
 |---|---|---|
 | `simulcast.kmp` | 모든 모듈의 바탕 | `kotlin("multiplatform")` + `jvm()` 단일 타깃(`jvmToolchain(21)`), `commonMain`에 `kotlinx-coroutines-core`, `commonTest`에 `kotlin("test")` + `kotlinx-coroutines-test`. 프로젝트 의존성은 주입하지 않는다. |
-| `simulcast.compose` | `core:designsystem`, `simulcast.feature`·`simulcast.desktop.app`을 통해 `feature:devices`·`app` | `simulcast.kmp` + `org.jetbrains.compose` + `org.jetbrains.kotlin.plugin.compose`, `commonMain`에 `compose.runtime`·`compose.foundation`·`compose.ui` — material3가 자기 트랙에서 끌어오는 구버전 대신 카탈로그의 `compose` 버전으로 고정한다. |
+| `simulcast.compose` | `core:designsystem`, `simulcast.feature`·`simulcast.desktop.app`을 통해 `feature:devices`·`app` | `simulcast.kmp` + `org.jetbrains.compose` + `org.jetbrains.kotlin.plugin.compose`, `commonMain`에 `compose.runtime`·`compose.foundation`·`compose.ui` — material3가 자기 트랙에서 끌어오는 구버전을, `strictly` 없는 보통의 최고 버전 우선 해석으로 카탈로그의 `compose` 버전까지 끌어올린다. |
 | `simulcast.koin` | `data`, `simulcast.feature`를 통해 `feature:devices` | `simulcast.kmp` + `commonMain`에 `koin-core`, `commonTest`에 `koin-test`. |
 | `simulcast.serialization` | `data` | `simulcast.kmp` + `org.jetbrains.kotlin.plugin.serialization` + `commonMain`에 `kotlinx-serialization-json`. |
 | `simulcast.feature` | `feature:devices` | `simulcast.compose` + `simulcast.koin` 위에 `commonMain`에서 `api(project(":domain"))`, `implementation(project(":core:designsystem"))`, `api(orbit-core)`, `api(androidx-lifecycle-viewmodel)`, `implementation(orbit-viewmodel, orbit-compose, koin-compose, koin-composeViewmodel)`; `commonTest`에 `orbit-test`, `turbine`. **`project(":data")`는 여기 없다** — `feature` 계열 모듈은 이 플러그인을 통해서만 프로젝트 의존성을 받으므로, `data`가 안 보이는 게 곧 "feature는 data를 모른다" 규칙의 강제 지점이다. |

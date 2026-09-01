@@ -75,10 +75,46 @@ class DeviceListViewModelTest {
 
         assertEquals(1, repository.callCount)
     }
+
+    @Test
+    fun refresh_resets_loading_and_recovers_when_getDevices_throws_unexpectedly() = runTest {
+        val repository = ThrowingThenSucceedingRepository(listing)
+        val viewModel = DeviceListViewModel(GetDevicesUseCase(repository))
+
+        viewModel.testWithInternalState(this) {
+            containerHost.refresh()
+            expectInternalState { copy(loading = true) }
+            // getDevices() threw here (a contract violation the real DeviceRepository
+            // implementations never commit — CommandRunner reports failure as a value). The
+            // guard must still come back to false, or every later refresh() — including the
+            // screen's own LaunchedEffect(Unit) one — would be silently ignored forever.
+            expectInternalState { copy(loading = false) }
+
+            // Prove the guard actually recovers, not just this one field: a subsequent refresh()
+            // must still be able to run to completion.
+            containerHost.refresh()
+            expectInternalState { copy(loading = true) }
+            expectInternalState { copy(loading = false, android = listing.android, ios = listing.ios) }
+        }
+
+        assertEquals(2, repository.callCount)
+    }
 }
 
 private class FakeRepository(private val listing: DeviceListing) : DeviceRepository {
     override suspend fun listDevices(): DeviceListing = listing
+}
+
+/** Throws on its first call, then behaves like [FakeRepository] — simulates a contract violation. */
+private class ThrowingThenSucceedingRepository(private val listing: DeviceListing) : DeviceRepository {
+    var callCount = 0
+        private set
+
+    override suspend fun listDevices(): DeviceListing {
+        callCount++
+        if (callCount == 1) error("boom")
+        return listing
+    }
 }
 
 /** Suspends [listDevices] until [complete] is called, so a test can hold an intent in flight. */
