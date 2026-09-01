@@ -81,19 +81,25 @@ class DeviceListViewModelTest {
         val repository = ThrowingThenSucceedingRepository(listing)
         val viewModel = DeviceListViewModel(GetDevicesUseCase(repository))
 
+        // What this pins: (1) loading comes back to false and the thrown message lands in
+        // refreshFailure instead of vanishing, and (2) a later refresh() still runs to
+        // completion (callCount reaches 2) — the guard/container are not bricked by the throw.
+        //
+        // What this does NOT and cannot pin: the production no-rethrow decision itself.
+        // testWithInternalState swaps in its own RealContainer wired with orbit-test's own
+        // (non-null) exceptionHandler, and RealContainer's dispatch loop only rethrows an
+        // intent's uncaught exception when settings.exceptionHandler is null — so under
+        // orbit-test the container always survives an intent throw regardless of whether this
+        // code rethrows after resetting state. A catch-and-rethrow variant would pass both
+        // expectInternalState calls below too, and only diverge from this fix in production,
+        // where DeviceListViewModel never installs an exceptionHandler.
         viewModel.testWithInternalState(this) {
             containerHost.refresh()
             expectInternalState { copy(loading = true) }
-            // getDevices() threw here (a contract violation the real DeviceRepository
-            // implementations never commit — CommandRunner reports failure as a value). The
-            // guard must still come back to false, or every later refresh() — including the
-            // screen's own LaunchedEffect(Unit) one — would be silently ignored forever.
-            expectInternalState { copy(loading = false) }
+            expectInternalState { copy(loading = false, refreshFailure = "boom") }
 
-            // Prove the guard actually recovers, not just this one field: a subsequent refresh()
-            // must still be able to run to completion.
             containerHost.refresh()
-            expectInternalState { copy(loading = true) }
+            expectInternalState { copy(loading = true, refreshFailure = null) }
             expectInternalState { copy(loading = false, android = listing.android, ios = listing.ios) }
         }
 
