@@ -59,10 +59,6 @@ private fun DeviceColumn(
                 // 에러가 바뀌면(예: 재시도 후 다른 실패) 스크롤 위치도 처음(0)부터 다시 시작해야
                 // 새 에러의 첫 줄이 가려지지 않는다 — 같은 슬롯의 이전 ScrollState를 재사용하면 안 된다.
                 val scrollState = remember(outcome.error) { ScrollState(0) }
-                // weight(1f)로 이 Text가 컬럼의 남은 공간 전체를 차지하도록 못박아야 verticalScroll에
-                // 안정적인 뷰포트가 생긴다. 이게 없으면 Text는 남은 공간만큼만 측정되어 그 안에서
-                // 잘려 보일 뿐 스크롤로 나머지에 닿을 방법이 없었다 — 그게 고치기 전 증상이었다.
-                // 스크롤은 기본적으로 맨 위(0)에서 시작하므로 진단에 중요한 첫 줄은 그대로 보인다.
                 Text(
                     outcome.error.describe(),
                     modifier = Modifier.weight(1f).verticalScroll(scrollState),
