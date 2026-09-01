@@ -1,7 +1,7 @@
 ---
 id: ADR-0001
 title: KMP multiplatform 플러그인 + jvm() 타깃 하나
-status: proposed
+status: accepted
 date: 2026-08-21
 deciders: cmp-simulcast 팀
 supersedes:

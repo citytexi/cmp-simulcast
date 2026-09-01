@@ -2986,7 +2986,7 @@ import dev.citytexi.simulcast.domain.DeviceRepository
 import dev.citytexi.simulcast.domain.DeviceState
 import dev.citytexi.simulcast.domain.GetDevicesUseCase
 import kotlinx.coroutines.test.runTest
-import org.orbitmvi.orbit.test.test
+import org.orbitmvi.orbit.test.testWithInternalState
 import kotlin.test.Test
 
 class DeviceListViewModelTest {
@@ -3000,11 +3000,13 @@ class DeviceListViewModelTest {
     fun refresh_shows_loading_then_carries_both_sides() = runTest {
         val viewModel = DeviceListViewModel(GetDevicesUseCase(FakeRepository(listing)))
 
-        viewModel.test(this) {
-            expectInitialState()
+        // orbit-test 12.0.0 checks the initial state automatically (autoCheckInitialState
+        // defaults to true) and exposes it through testWithInternalState/expectInternalState —
+        // the test/expectState/expectInitialState trio from older Orbit majors is deprecated.
+        viewModel.testWithInternalState(this) {
             containerHost.refresh()
-            expectState { copy(loading = true) }
-            expectState { copy(loading = false, android = listing.android, ios = listing.ios) }
+            expectInternalState { copy(loading = true) }
+            expectInternalState { copy(loading = false, android = listing.android, ios = listing.ios) }
         }
     }
 }
@@ -3048,16 +3050,14 @@ package dev.citytexi.simulcast.feature.devices
 
 import androidx.lifecycle.ViewModel
 import dev.citytexi.simulcast.domain.GetDevicesUseCase
-import org.orbitmvi.orbit.ContainerHost
-import org.orbitmvi.orbit.syntax.simple.intent
-import org.orbitmvi.orbit.syntax.simple.reduce
-import org.orbitmvi.orbit.viewmodel.container
+import org.orbitmvi.orbit.OrbitContainerHost
+import org.orbitmvi.orbit.viewmodel.orbitContainer
 
 class DeviceListViewModel(
     private val getDevices: GetDevicesUseCase,
-) : ViewModel(), ContainerHost<DeviceListState, Nothing> {
+) : ViewModel(), OrbitContainerHost<DeviceListState, DeviceListState, Nothing> {
 
-    override val container = container<DeviceListState, Nothing>(DeviceListState())
+    override val container = orbitContainer<DeviceListState, Nothing>(DeviceListState())
 
     fun refresh() = intent {
         reduce { state.copy(loading = true) }
@@ -3336,10 +3336,11 @@ import androidx.compose.ui.window.application
 import dev.citytexi.simulcast.designsystem.AppTheme
 import dev.citytexi.simulcast.feature.devices.DeviceListScreen
 import org.koin.compose.KoinApplication
+import org.koin.dsl.koinConfiguration
 
 fun main() = application {
     Window(onCloseRequest = ::exitApplication, title = "cmp-simulcast") {
-        KoinApplication(application = { modules(appModules) }) {
+        KoinApplication(configuration = koinConfiguration { modules(appModules) }) {
             AppTheme {
                 DeviceListScreen()
             }

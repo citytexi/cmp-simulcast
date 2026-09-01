@@ -9,6 +9,12 @@ kotlin {
             implementation(compose.material3)
             implementation(libs.kotlinx.coroutines.swing)
             implementation(project(":core:designsystem"))
+            implementation(project(":core:process"))
+            implementation(project(":data"))
+            implementation(project(":domain"))
+            implementation(project(":feature:devices"))
+            implementation(libs.koin.core)
+            implementation(libs.koin.compose)
         }
     }
 }
